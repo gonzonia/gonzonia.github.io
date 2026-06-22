@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ES Theme Studio v3.2 (Deep Compiler)</title>
+    <style>
+        :root { --bg: #1a0b2e; --panel: #111; --border: #FF00FF; --text: #00FFFF; }
+        body { margin: 0; padding: 0; background: var(--bg); color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; height: 100vh; overflow: hidden; }
+        
+        #sidebar { width: 450px; background: #0a0414; border-right: 2px solid var(--border); display: flex; flex-direction: column; z-index: 50; }
+        #main { flex-grow: 1; display: flex; flex-direction: column; }
+        
+        .header { padding: 15px; border-bottom: 1px solid #333; }
+        .header h2 { margin: 0; color: #FF00FF; text-transform: uppercase; font-size: 20px; }
+        .tabs { display: flex; background: #000; border-bottom: 2px solid #333; }
+        .tab { padding: 12px 20px; cursor: pointer; font-weight: bold; color: #888; text-transform: uppercase; font-size: 12px; }
+        .tab.active { color: #00FFFF; border-bottom: 3px solid #00FFFF; background: #111; }
+        
+        #controls-container { flex-grow: 1; overflow-y: auto; padding: 15px; overflow-x: hidden; }
+        .element-card { background: var(--panel); border-left: 4px solid var(--border); margin-bottom: 15px; border-radius: 4px; padding: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.2s; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 8px; }
+        .card-header h3 { margin: 0; font-size: 14px; color: var(--text); }
+        .btn-sm { background: #333; color: white; border: none; padding: 4px 8px; cursor: pointer; font-size: 10px; border-radius: 3px; }
+        .btn-sm.delete { background: #aa0000; }
+        .btn-sm.show { background: #0088FF; }
+        
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+        .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+        .input-group { display: flex; flex-direction: column; min-width: 0; }
+        .input-group label { font-size: 10px; color: #aaa; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .input-group input, .input-group select { width: 100%; box-sizing: border-box; background: #222; color: #fff; border: 1px solid #444; padding: 4px; font-size: 11px; border-radius: 2px; }
+        .full-width { grid-column: 1 / -1; }
+        
+        .actions { padding: 15px; border-top: 1px solid #333; display: flex; gap: 10px; flex-direction: column; }
+        .btn { padding: 10px; background: #0088FF; color: white; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; text-transform: uppercase; font-size: 12px; }
+        .btn:hover { background: #00aaff; }
+        textarea { background: #000; color: #00FFFF; border: 1px solid #444; padding: 10px; font-family: monospace; font-size: 11px; resize: vertical; box-sizing: border-box; width: 100%; }
+
+        #drop-zone { border: 2px dashed #00FFFF; border-radius: 6px; padding: 20px; text-align: center; cursor: pointer; color: #00FFFF; font-weight: bold; font-size: 12px; transition: background 0.2s; }
+        #drop-zone:hover { background: rgba(0, 255, 255, 0.1); }
+        
+        #monitor-wrapper { flex-grow: 1; display: flex; justify-content: center; align-items: center; padding: 20px; background: radial-gradient(circle, #2a1b4e 0%, #000 100%); overflow: hidden; }
+        #monitor { width: 100%; max-width: 1600px; aspect-ratio: 16/9; background: #000; border: 2px solid #555; position: relative; overflow: hidden; box-shadow: 0 0 50px rgba(255, 0, 255, 0.2); container-type: size; }
+        
+        .es-container { position: absolute; box-sizing: border-box; overflow: hidden; display: flex; cursor: pointer; transition: outline 0.1s; }
+        .es-container.debug { border: 1px dashed rgba(255,255,255,0.4); }
+        .es-container:hover { outline: 2px solid #FFF; z-index: 9999 !important; }
+        .es-content-media { width: 100%; height: 100%; pointer-events: none; }
+        .es-content-txt { width: 100%; height: 100%; line-height: 1.2; word-wrap: break-word; pointer-events: none; }
+        
+        .highlight-card { background: #002233 !important; border-left-color: #00FFFF !important; box-shadow: 0 0 20px rgba(0, 255, 255, 0.5) !important; transform: scale(1.02); transition: all 0.3s ease; z-index: 10; position: relative; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div class="header"><h2>ES Theme Studio v3.2</h2></div>
+    <div class="actions" style="border-bottom: 1px solid #333; border-top: none;">
+        
+        <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+            Click to Browse for theme.xml<br>Or Drag & Drop File Here
+        </div>
+        <input type="file" id="file-input" accept=".xml" style="display:none" onchange="app.handleFileSelect(event)">
+        
+        <div id="raw-input-area" style="display:none;">
+            <textarea id="xml-io" rows="4" placeholder="Paste full theme.xml here..."></textarea>
+            <button class="btn btn-sm" onclick="app.processRawXML(document.getElementById('xml-io').value)" style="width:100%; margin-top:5px;">Parse Raw Text</button>
+        </div>
+        
+        <div style="text-align:right;">
+            <a href="#" onclick="document.getElementById('raw-input-area').style.display='block'; return false;" style="color:#aaa; font-size:10px;">Show Manual Paste Box</a>
+        </div>
+
+        <div class="grid-2">
+            <button class="btn" style="background:#0088FF;" onclick="app.exportFullThemeXML()">Export Full Theme</button>
+            <button class="btn" style="background:#8b008b;" onclick="app.exportCurrentView()">Export View Only</button>
+        </div>
+        <div class="grid-2">
+            <button class="btn" style="background:#32CD32;" onclick="app.addCustomElement('image')">+ Extra Image</button>
+            <button class="btn" style="background:#FFA500;" onclick="app.addCustomElement('text')">+ Extra Text</button>
+        </div>
+    </div>
+    <div id="controls-container"></div>
+</div>
+
+<div id="main">
+    <div class="tabs" id="tabs-container"></div>
+    <div id="monitor-wrapper">
+        <div id="monitor" class="debug"></div>
+    </div>
+</div>
+
+<script>
+    const ES_SCHEMA = {
+        image: ['pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'tile', 'color'],
+        video: ['pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'delay', 'showSnapshotNoVideo'],
+        text: ['pos', 'size', 'origin', 'zIndex', 'text', 'color', 'backgroundColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing'],
+        textlist: ['pos', 'size', 'origin', 'zIndex', 'selectorColor', 'selectedColor', 'primaryColor', 'secondaryColor', 'fontPath', 'fontSize', 'alignment', 'horizontalMargin', 'forceUppercase', 'lineSpacing'],
+        datetime: ['pos', 'size', 'origin', 'zIndex', 'color', 'fontPath', 'fontSize', 'alignment', 'format', 'displayRelative'],
+        rating: ['pos', 'size', 'origin', 'zIndex', 'filledPath', 'unfilledPath', 'color'],
+        imagegrid: ['pos', 'size', 'origin', 'zIndex', 'margin', 'autoLayout', 'imageSource', 'scrollDirection', 'centerSelection'],
+        gridtile: ['padding', 'backgroundColor', 'backgroundImage', 'imageColor', 'backgroundCenterColor', 'backgroundEdgeColor'],
+        helpsystem: ['pos', 'origin', 'textColor', 'iconColor', 'fontPath', 'fontSize']
+    };
+
+    const ARRAY_PROPS = ['pos', 'size', 'maxSize', 'origin'];
+    
+    // Properties eligible for automatic cross-view cluster compression
+    const GROUPABLE_PROPS = [
+        'color', 'fontSize', 'alignment', 'fontPath', 'lineSpacing', 'forceUppercase', 
+        'backgroundColor', 'textColor', 'iconColor', 'primaryColor', 'secondaryColor', 
+        'selectorColor', 'selectedColor', 'horizontalMargin', 'format', 'displayRelative'
+    ];
+
+    const app = {
+        currentView: 'detailed',
+        views: ['system', 'basic', 'detailed', 'video', 'grid'],
+        data: {},
+        variables: {},
+        fonts: {}, 
+        images: {}, 
+        autoFonts: {},
+
+        createElement: function(tag, name, extra = false, visible = false) {
+            const el = {
+                id: `el_${name}_${Math.floor(Math.random() * 10000)}`,
+                tag: tag, 
+                name: name, 
+                extra: extra, 
+                visible: visible
+            };
+            
+            ARRAY_PROPS.forEach(p => {
+                el[p] = ['0.000', '0.000'];
+            });
+            
+            const scalarProps = [
+                'zIndex', 'path', 'tile', 'color', 'delay', 'showSnapshotNoVideo', 
+                'text', 'backgroundColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing', 
+                'selectorColor', 'selectedColor', 'primaryColor', 'secondaryColor', 'horizontalMargin', 
+                'format', 'displayRelative', 'filledPath', 'unfilledPath', 
+                'margin', 'autoLayout', 'imageSource', 'scrollDirection', 'centerSelection', 
+                'padding', 'backgroundImage', 'imageColor', 'backgroundCenterColor', 'backgroundEdgeColor', 
+                'textColor', 'iconColor'
+            ];
+            
+            scalarProps.forEach(p => {
+                el[p] = '';
+            });
+
+            el.zIndex = '10';
+            if (tag === 'text') {
+                el.text = `[${name}]`;
+            }
+
+            return el;
+        },
+
+        init: function() {
+            const baseElements = [
+                { tag: 'helpsystem', name: 'help' },
+                { tag: 'textlist', name: 'gamelist' },
+                { tag: 'imagegrid', name: 'gamegrid' },
+                { tag: 'gridtile', name: 'default' },
+                { tag: 'gridtile', name: 'selected' },
+                { tag: 'image', name: 'md_image' },
+                { tag: 'video', name: 'md_video' },
+                { tag: 'image', name: 'md_marquee' },
+                { tag: 'text', name: 'md_description' },
+                { tag: 'rating', name: 'md_rating' },
+                { tag: 'datetime', name: 'md_releasedate' },
+                { tag: 'text', name: 'md_developer' },
+                { tag: 'text', name: 'md_publisher' },
+                { tag: 'text', name: 'md_genre' },
+                { tag: 'text', name: 'md_players' },
+                { tag: 'text', name: 'md_playcount' },
+                { tag: 'text', name: 'md_lbl_rating' },
+                { tag: 'text', name: 'md_lbl_releasedate' },
+                { tag: 'text', name: 'md_lbl_developer' },
+                { tag: 'text', name: 'md_lbl_publisher' },
+                { tag: 'text', name: 'md_lbl_genre' },
+                { tag: 'text', name: 'md_lbl_players' },
+                { tag: 'text', name: 'md_lbl_playcount' }
+            ];
+            
+            this.views.forEach(v => {
+                this.data[v] = baseElements.map(base => {
+                    return this.createElement(base.tag, base.name, false, false);
+                });
+            });
+
+            this.views.forEach(v => {
+                const tab = document.createElement('div');
+                tab.className = `tab ${v === this.currentView ? 'active' : ''}`;
+                tab.innerText = v;
+                tab.onclick = () => {
+                    this.switchView(v);
+                };
+                document.getElementById('tabs-container').appendChild(tab);
+            });
+            
+            this.setupDragAndDrop();
+            this.renderControls();
+        },
+
+        setupDragAndDrop: function() {
+            const dz = document.getElementById('drop-zone');
+            
+            dz.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dz.style.backgroundColor = 'rgba(0,255,255,0.2)';
+            });
+            
+            dz.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dz.style.backgroundColor = 'transparent';
+            });
+            
+            dz.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dz.style.backgroundColor = 'transparent';
+                
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    const file = e.dataTransfer.files[0];
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        this.processRawXML(ev.target.result);
+                    };
+                    reader.readAsText(file);
+                }
+            });
+        },
+
+        handleFileSelect: function(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                this.processRawXML(e.target.result);
+            };
+            reader.readAsText(file);
+            event.target.value = ''; 
+        },
+
+        switchView: function(view) {
+            this.currentView = view;
+            const tabs = document.querySelectorAll('.tab');
+            
+            tabs.forEach(t => {
+                if (t.innerText === view) {
+                    t.classList.add('active');
+                } else {
+                    t.classList.remove('active');
+                }
+            });
+            
+            this.renderControls();
+        },
+
+        addCustomElement: function(tag) {
+            const name = prompt(`Enter a name for this custom ${tag}:`, `custom_${tag}`);
+            if (name) {
+                const newEl = this.createElement(tag, name, true, true);
+                this.data[this.currentView].unshift(newEl);
+                this.renderControls();
+            }
+        },
+
+        deleteElement: function(id) {
+            this.data[this.currentView] = this.data[this.currentView].filter(el => {
+                return el.id !== id;
+            });
+            this.renderControls();
+        },
+
+        updateElement: function(id, key, value, index = null) {
+            const el = this.data[this.currentView].find(e => {
+                return e.id === id;
+            });
+            
+            if (index !== null) { 
+                el[key][index] = value; 
+            } else { 
+                el[key] = value; 
+            }
+            
+            this.renderMonitor(); 
+        },
+
+        handleAssetUpload: function(event, id, type) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+            
+            const url = URL.createObjectURL(file);
+            
+            if (type === 'image') {
+                this.images[id] = { url: url, name: file.name };
+                this.renderControls(); 
+                this.renderMonitor();
+            } else if (type === 'font') {
+                const el = this.data[this.currentView].find(e => {
+                    return e.id === id;
+                });
+                
+                if (el.fontPath === '') {
+                    el.fontPath = `./_assets/fonts/${file.name}`;
+                }
+                
+                const pathKey = el.fontPath.toLowerCase();
+                const safeFontName = `font_${pathKey.replace(/[^a-zA-Z0-9]/g, '')}`;
+                
+                const font = new FontFace(safeFontName, `url(${url})`);
+                
+                font.load().then(loadedFont => {
+                    document.fonts.add(loadedFont);
+                    this.fonts[pathKey] = { name: safeFontName, fileName: file.name };
+                    this.renderControls(); 
+                    this.renderMonitor(); 
+                }).catch(err => {
+                    alert("Error loading font file.");
+                });
+            }
+        },
+
+        scrollToControl: function(id) {
+            const card = document.getElementById(`ctrl-${id}`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                const highlighted = document.querySelectorAll('.highlight-card');
+                highlighted.forEach(c => {
+                    c.classList.remove('highlight-card');
+                });
+                
+                card.classList.add('highlight-card');
+                
+                setTimeout(() => {
+                    card.classList.remove('highlight-card');
+                }, 1500);
+            }
+        },
+
+        renderControls: function() {
+            const container = document.getElementById('controls-container');
+            container.innerHTML = '';
+            
+            const sortedElements = [...this.data[this.currentView]].sort((a, b) => {
+                if (a.visible === b.visible) {
+                    return parseInt(a.zIndex || 0) - parseInt(b.zIndex || 0);
+                }
+                return a.visible ? -1 : 1;
+            });
+            
+            sortedElements.forEach(el => {
+                const schema = ES_SCHEMA[el.tag] || [];
+                let visibleControls = '';
+                
+                if (el.visible) {
+                    if (schema.some(p => ARRAY_PROPS.includes(p))) {
+                        visibleControls += `<div class="grid-4">`;
+                        if (schema.includes('pos')) {
+                            visibleControls += `<div class="input-group"><label>pos X</label><input type="number" step="0.005" value="${el.pos[0]}" oninput="app.updateElement('${el.id}', 'pos', this.value, 0)"></div>`;
+                            visibleControls += `<div class="input-group"><label>pos Y</label><input type="number" step="0.005" value="${el.pos[1]}" oninput="app.updateElement('${el.id}', 'pos', this.value, 1)"></div>`;
+                        }
+                        if (schema.includes('size')) {
+                            visibleControls += `<div class="input-group"><label>size W</label><input type="number" step="0.005" value="${el.size[0]}" oninput="app.updateElement('${el.id}', 'size', this.value, 0)"></div>`;
+                            visibleControls += `<div class="input-group"><label>size H</label><input type="number" step="0.005" value="${el.size[1]}" oninput="app.updateElement('${el.id}', 'size', this.value, 1)"></div>`;
+                        }
+                        if (schema.includes('maxSize')) {
+                            visibleControls += `<div class="input-group"><label>maxSz W</label><input type="number" step="0.005" value="${el.maxSize[0]}" oninput="app.updateElement('${el.id}', 'maxSize', this.value, 0)"></div>`;
+                            visibleControls += `<div class="input-group"><label>maxSz H</label><input type="number" step="0.005" value="${el.maxSize[1]}" oninput="app.updateElement('${el.id}', 'maxSize', this.value, 1)"></div>`;
+                        }
+                        if (schema.includes('origin')) {
+                            visibleControls += `<div class="input-group"><label>orig X</label><input type="number" step="0.1" value="${el.origin[0]}" oninput="app.updateElement('${el.id}', 'origin', this.value, 0)"></div>`;
+                            visibleControls += `<div class="input-group"><label>orig Y</label><input type="number" step="0.1" value="${el.origin[1]}" oninput="app.updateElement('${el.id}', 'origin', this.value, 1)"></div>`;
+                        }
+                        visibleControls += `</div>`;
+                    }
+
+                    visibleControls += `<div class="grid-2">`;
+                    if (schema.includes('zIndex')) {
+                        visibleControls += `<div class="input-group"><label>zIndex</label><input type="number" value="${el.zIndex}" oninput="app.updateElement('${el.id}', 'zIndex', this.value)"></div>`;
+                    }
+                    if (schema.includes('padding')) {
+                        visibleControls += `<div class="input-group"><label>padding</label><input type="text" value="${el.padding}" placeholder="16" oninput="app.updateElement('${el.id}', 'padding', this.value)"></div>`;
+                    }
+                    visibleControls += `</div>`;
+
+                    const colorProps = ['color', 'primaryColor', 'secondaryColor', 'selectorColor', 'selectedColor', 'backgroundColor', 'textColor', 'iconColor', 'imageColor', 'backgroundCenterColor', 'backgroundEdgeColor'];
+                    const activeColorProps = schema.filter(p => colorProps.includes(p));
+                    if (activeColorProps.length > 0) {
+                        visibleControls += `<div class="grid-2 full-width">`;
+                        activeColorProps.forEach(cProp => {
+                            visibleControls += `<div class="input-group"><label>${cProp} (Hex/\${var})</label><input type="text" value="${el[cProp]}" oninput="app.updateElement('${el.id}', '${cProp}', this.value)"></div>`;
+                        });
+                        visibleControls += `</div>`;
+                    }
+
+                    if (schema.includes('fontPath')) {
+                        const lookupPath = el.fontPath ? el.fontPath.toLowerCase() : '';
+                        let fontBadge = '';
+                        if (lookupPath && this.fonts[lookupPath]) {
+                            fontBadge = `<span style="color:#32CD32; float:right; font-weight:bold;">✓ Linked (${this.fonts[lookupPath].fileName})</span>`;
+                        }
+                        
+                        visibleControls += `
+                            <div class="input-group full-width">
+                                <label>fontPath</label>
+                                <input type="text" value="${el.fontPath}" oninput="app.updateElement('${el.id}', 'fontPath', this.value)">
+                            </div>
+                            <div class="input-group full-width">
+                                <label>Upload TTF Preview ${fontBadge}</label>
+                                <input type="file" accept=".ttf,.otf" onchange="app.handleAssetUpload(event, '${el.id}', 'font')">
+                            </div>`;
+                    }
+
+                    const typoGridProps = ['fontSize', 'alignment', 'lineSpacing', 'forceUppercase', 'format', 'displayRelative', 'horizontalMargin'];
+                    const activeTypoProps = schema.filter(p => typoGridProps.includes(p));
+                    if (activeTypoProps.length > 0 || schema.includes('text')) {
+                        visibleControls += `<div class="grid-2 full-width">`;
+                        if (schema.includes('fontSize')) {
+                            visibleControls += `<div class="input-group"><label>fontSize</label><input type="number" step="0.005" value="${el.fontSize}" oninput="app.updateElement('${el.id}', 'fontSize', this.value)"></div>`;
+                        }
+                        if (schema.includes('alignment')) {
+                            visibleControls += `
+                                <div class="input-group">
+                                    <label>alignment</label>
+                                    <select onchange="app.updateElement('${el.id}', 'alignment', this.value)">
+                                        <option value="left" ${el.alignment === 'left' ? 'selected' : ''}>Left</option>
+                                        <option value="center" ${el.alignment === 'center' ? 'selected' : ''}>Center</option>
+                                        <option value="right" ${el.alignment === 'right' ? 'selected' : ''}>Right</option>
+                                    </select>
+                                </div>`;
+                        }
+                        if (schema.includes('forceUppercase')) {
+                            visibleControls += `
+                                <div class="input-group">
+                                    <label>forceUppercase</label>
+                                    <select onchange="app.updateElement('${el.id}', 'forceUppercase', this.value)">
+                                        <option value="false" ${el.forceUppercase === 'false' || !el.forceUppercase ? 'selected' : ''}>False</option>
+                                        <option value="true" ${el.forceUppercase === 'true' ? 'selected' : ''}>True</option>
+                                    </select>
+                                </div>`;
+                        }
+                        if (schema.includes('displayRelative')) {
+                            visibleControls += `
+                                <div class="input-group">
+                                    <label>displayRelative</label>
+                                    <select onchange="app.updateElement('${el.id}', 'displayRelative', this.value)">
+                                        <option value="false" ${el.displayRelative === 'false' || !el.displayRelative ? 'selected' : ''}>False</option>
+                                        <option value="true" ${el.displayRelative === 'true' ? 'selected' : ''}>True</option>
+                                    </select>
+                                </div>`;
+                        }
+                        if (schema.includes('lineSpacing')) {
+                            visibleControls += `<div class="input-group"><label>lineSpacing</label><input type="number" step="0.1" value="${el.lineSpacing}" oninput="app.updateElement('${el.id}', 'lineSpacing', this.value)"></div>`;
+                        }
+                        if (schema.includes('horizontalMargin')) {
+                            visibleControls += `<div class="input-group"><label>horizontalMargin</label><input type="number" step="0.01" value="${el.horizontalMargin}" oninput="app.updateElement('${el.id}', 'horizontalMargin', this.value)"></div>`;
+                        }
+                        if (schema.includes('text')) {
+                            visibleControls += `<div class="input-group full-width"><label>Dummy Text Preview</label><input type="text" value="${el.text}" oninput="app.updateElement('${el.id}', 'text', this.value)"></div>`;
+                        }
+                        if (schema.includes('format')) {
+                            visibleControls += `<div class="input-group full-width"><label>format (e.g. %m/%d/%Y)</label><input type="text" value="${el.format}" oninput="app.updateElement('${el.id}', 'format', this.value)"></div>`;
+                        }
+                        visibleControls += `</div>`;
+                    }
+
+                    const pathProps = ['path', 'backgroundImage', 'filledPath', 'unfilledPath'];
+                    pathProps.forEach(pProp => {
+                        if (schema.includes(pProp)) {
+                            let imgBadge = '';
+                            if (pProp === 'path' && this.images[el.id]) {
+                                imgBadge = `<span style="color:#32CD32; float:right; font-weight:bold;">✓ Loaded</span>`;
+                            }
+                            visibleControls += `
+                                <div class="input-group full-width">
+                                    <label>${pProp} (XML Path)</label>
+                                    <input type="text" value="${el[pProp]}" oninput="app.updateElement('${el.id}', '${pProp}', this.value)">
+                                </div>`;
+                            
+                            if (pProp === 'path') {
+                                visibleControls += `
+                                <div class="input-group full-width" style="margin-bottom:8px;">
+                                    <label>Upload Asset Preview ${imgBadge}</label>
+                                    <input type="file" accept="image/*,video/*" onchange="app.handleAssetUpload(event, '${el.id}', 'image')">
+                                </div>`;
+                            }
+                        }
+                    });
+
+                    const mediaSwitches = ['tile', 'showSnapshotNoVideo'];
+                    const activeMediaSwitches = schema.filter(p => mediaSwitches.includes(p));
+                    if (activeMediaSwitches.length > 0 || schema.includes('delay')) {
+                        visibleControls += `<div class="grid-2 full-width">`;
+                        if (schema.includes('tile')) {
+                            visibleControls += `
+                                <div class="input-group">
+                                    <label>tile</label>
+                                    <select onchange="app.updateElement('${el.id}', 'tile', this.value)">
+                                        <option value="false" ${el.tile === 'false' || !el.tile ? 'selected' : ''}>False</option>
+                                        <option value="true" ${el.tile === 'true' ? 'selected' : ''}>True</option>
+                                    </select>
+                                </div>`;
+                        }
+                        if (schema.includes('showSnapshotNoVideo')) {
+                            visibleControls += `
+                                <div class="input-group">
+                                    <label>showSnapshotNoVideo</label>
+                                    <select onchange="app.updateElement('${el.id}', 'showSnapshotNoVideo', this.value)">
+                                        <option value="false" ${el.showSnapshotNoVideo === 'false' || !el.showSnapshotNoVideo ? 'selected' : ''}>False</option>
+                                        <option value="true" ${el.showSnapshotNoVideo === 'true' ? 'selected' : ''}>True</option>
+                                    </select>
+                                </div>`;
+                        }
+                        if (schema.includes('delay')) {
+                            visibleControls += `<div class="input-group"><label>delay (seconds)</label><input type="number" step="0.1" value="${el.delay}" oninput="app.updateElement('${el.id}', 'delay', this.value)"></div>`;
+                        }
+                        visibleControls += `</div>`;
+                    }
+
+                    if (el.tag === 'imagegrid') {
+                        visibleControls += `
+                            <div class="grid-2 full-width">
+                                <div class="input-group">
+                                    <label>margin (e.g. 0.01 0.02)</label>
+                                    <input type="text" value="${el.margin}" oninput="app.updateElement('${el.id}', 'margin', this.value)">
+                                </div>
+                                <div class="input-group">
+                                    <label>autoLayout (cols rows)</label>
+                                    <input type="text" value="${el.autoLayout}" placeholder="5 3" oninput="app.updateElement('${el.id}', 'autoLayout', this.value)">
+                                </div>
+                                <div class="input-group">
+                                    <label>scrollDirection</label>
+                                    <select onchange="app.updateElement('${el.id}', 'scrollDirection', this.value)">
+                                        <option value="vertical" ${el.scrollDirection === 'vertical' ? 'selected' : ''}>Vertical</option>
+                                        <option value="horizontal" ${el.scrollDirection === 'horizontal' ? 'selected' : ''}>Horizontal</option>
+                                    </select>
+                                </div>
+                                <div class="input-group">
+                                    <label>centerSelection</label>
+                                    <select onchange="app.updateElement('${el.id}', 'centerSelection', this.value)">
+                                        <option value="false" ${el.centerSelection === 'false' || !el.centerSelection ? 'selected' : ''}>False</option>
+                                        <option value="true" ${el.centerSelection === 'true' ? 'selected' : ''}>True</option>
+                                    </select>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                let toggleBtn = '';
+                if (el.visible) {
+                    toggleBtn = `<button class="btn-sm" onclick="app.updateElement('${el.id}', 'visible', false); app.renderControls();">Hide</button>`;
+                } else {
+                    toggleBtn = `<button class="btn-sm show" onclick="app.updateElement('${el.id}', 'visible', true); app.renderControls();">Add to View</button>`;
+                }
+
+                let deleteBtn = '';
+                if (el.extra) {
+                    deleteBtn = `<button class="btn-sm delete" onclick="app.deleteElement('${el.id}')">Del</button>`;
+                }
+
+                const cardHTML = `
+                    <div class="element-card" style="border-left-color: ${el.extra ? '#00FFFF' : '#FF00FF'}; opacity: ${el.visible ? '1' : '0.4'};" id="ctrl-${el.id}">
+                        <div class="card-header">
+                            <h3>${el.name} <span style="color:#666; font-size:10px;">&lt;${el.tag}&gt;</span></h3>
+                            <div>${toggleBtn} ${deleteBtn}</div>
+                        </div>
+                        ${visibleControls}
+                    </div>`;
+                    
+                container.innerHTML += cardHTML;
+            });
+            
+            this.renderMonitor();
+        },
+
+        parseVariableColor: function(rawColor) {
+            if (!rawColor) return 'FFFFFFFF';
+            let out = rawColor;
+            if (out.includes('$')) {
+                const varKey = out.replace(/[{}$]/g, '');
+                if (this.variables[varKey]) {
+                    out = this.variables[varKey];
+                } else {
+                    out = 'FFFFFFFF';
+                }
+            }
+            let cssColor = `#${out.substring(0, 6)}`;
+            if (out.length >= 8) {
+                cssColor += out.substring(6, 8);
+            }
+            return cssColor;
+        },
+
+        renderMonitor: function() {
+            const monitor = document.getElementById('monitor');
+            monitor.innerHTML = '';
+            
+            this.data[this.currentView].forEach(el => {
+                if (!el.visible || el.tag === 'gridtile') {
+                    return; 
+                }
+
+                const cont = document.createElement('div');
+                cont.className = 'es-container debug';
+                
+                const sw = parseFloat(el.size[0]);
+                const sh = parseFloat(el.size[1]);
+                const mw = parseFloat(el.maxSize[0]);
+                const mh = parseFloat(el.maxSize[1]);
+                
+                let w = mw > 0 ? mw : (sw > 0 ? sw : 0);
+                let h = mh > 0 ? mh : (sh > 0 ? sh : 0);
+                
+                if (el.tag === 'helpsystem') {
+                    cont.style.bottom = '0';
+                    cont.style.left = '0';
+                    cont.style.width = '100%';
+                    cont.style.height = '5%';
+                    cont.style.borderTop = '1px dashed rgba(255,255,255,0.2)';
+                } else {
+                    cont.style.left = (parseFloat(el.pos[0]) * 100) + '%';
+                    cont.style.top = (parseFloat(el.pos[1]) * 100) + '%';
+                    if (w > 0) cont.style.width = (w * 100) + '%';
+                    if (h > 0) cont.style.height = (h * 100) + '%';
+                    cont.style.transform = `translate(-${parseFloat(el.origin[0]) * 100}%, -${parseFloat(el.origin[1]) * 100}%)`;
+                }
+
+                cont.style.zIndex = el.zIndex;
+
+                cont.onclick = (e) => { 
+                    e.stopPropagation(); 
+                    this.scrollToControl(el.id); 
+                };
+
+                if (el.tag === 'imagegrid') {
+                    cont.style.display = 'grid';
+                    let cols = 5; let rows = 3;
+                    if (el.autoLayout) {
+                        const alParts = el.autoLayout.split(' ');
+                        if (alParts.length >= 2) {
+                            cols = parseInt(alParts[0]);
+                            rows = parseInt(alParts[1]);
+                        }
+                    }
+                    cont.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+                    cont.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+                    
+                    if (el.margin) {
+                        const mParts = el.margin.split(' ');
+                        const mX = parseFloat(mParts[0]) * 100;
+                        const mY = mParts[1] ? parseFloat(mParts[1]) * 100 : mX;
+                        cont.style.gap = `${mY}% ${mX}%`;
+                        cont.style.padding = `${mY}% ${mX}%`;
+                    } else {
+                        cont.style.gap = '1%';
+                        cont.style.padding = '1%';
+                    }
+                    
+                    const defTile = this.data[this.currentView].find(e => { return e.tag === 'gridtile' && e.name === 'default'; });
+                    const selTile = this.data[this.currentView].find(e => { return e.tag === 'gridtile' && e.name === 'selected'; });
+
+                    for (let i = 0; i < (cols * rows); i++) {
+                        const tile = document.createElement('div');
+                        const isSelected = (i === Math.floor((cols * rows) / 2));
+                        let tData = (isSelected && selTile && selTile.visible) ? selTile : ((defTile && defTile.visible) ? defTile : null);
+                        
+                        tile.style.boxSizing = 'border-box';
+                        tile.style.display = 'flex';
+                        tile.style.alignItems = 'center';
+                        tile.style.justifyContent = 'center';
+                        tile.style.position = 'relative';
+
+                        if (tData) {
+                            tile.style.backgroundColor = tData.backgroundColor ? this.parseVariableColor(tData.backgroundColor) : 'transparent';
+                            if (tData.padding) tile.style.padding = `${parseFloat(tData.padding.split(' ')[0])}px`;
+                        } else {
+                            tile.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                        }
+                        
+                        const gameImg = document.createElement('div');
+                        gameImg.style.width = '100%';
+                        gameImg.style.height = '100%';
+                        gameImg.style.backgroundColor = isSelected ? 'rgba(0,255,255,0.4)' : 'rgba(255,0,255,0.2)';
+                        gameImg.style.border = isSelected ? '2px solid #00FFFF' : '1px solid rgba(255,255,255,0.2)';
+                        gameImg.style.boxSizing = 'border-box';
+                        
+                        tile.appendChild(gameImg);
+                        cont.appendChild(tile);
+                    }
+                    monitor.appendChild(cont);
+                    return;
+                }
+
+                if (el.tag === 'textlist') {
+                    cont.style.flexDirection = 'column';
+                    cont.style.justifyContent = 'space-around';
+                    const lines = 10;
+                    for (let i = 0; i < lines; i++) {
+                        const isSelected = (i === 4);
+                        const row = document.createElement('div');
+                        row.style.width = '100%';
+                        row.innerText = `Game Title ${i + 1}`;
+                        row.style.fontSize = `${parseFloat(el.fontSize || '0.030') * 100}cqh`;
+                        row.style.textAlign = el.alignment || 'left';
+                        
+                        if (el.forceUppercase === 'true') row.style.textTransform = 'uppercase';
+                        if (el.lineSpacing) row.style.lineHeight = el.lineSpacing;
+                        
+                        if (isSelected) {
+                            row.style.backgroundColor = el.selectorColor ? this.parseVariableColor(el.selectorColor) : 'rgba(255,255,255,0.2)';
+                            row.style.color = el.selectedColor ? this.parseVariableColor(el.selectedColor) : '#FFF';
+                        } else {
+                            row.style.color = el.primaryColor ? this.parseVariableColor(el.primaryColor) : '#AAA';
+                        }
+                        
+                        if (el.fontPath && this.fonts[el.fontPath.toLowerCase()]) {
+                            row.style.fontFamily = `'${this.fonts[el.fontPath.toLowerCase()].name}', monospace`;
+                        }
+                        cont.appendChild(row);
+                    }
+                    monitor.appendChild(cont);
+                    return;
+                }
+
+                if (el.tag === 'rating') {
+                    cont.style.display = 'flex';
+                    cont.style.alignItems = 'center';
+                    cont.style.justifyContent = 'space-between';
+                    for (let i = 0; i < 5; i++) {
+                        const star = document.createElement('div');
+                        star.style.width = '18%';
+                        star.style.height = '100%';
+                        star.style.backgroundColor = el.color ? this.parseVariableColor(el.color) : 'yellow';
+                        star.style.clipPath = 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
+                        cont.appendChild(star);
+                    }
+                    monitor.appendChild(cont);
+                    return;
+                }
+
+                if (el.tag === 'helpsystem') {
+                    cont.style.display = 'flex';
+                    cont.style.alignItems = 'center';
+                    cont.style.justifyContent = 'flex-end';
+                    cont.style.gap = '15px';
+                    cont.style.paddingRight = '20px';
+                    
+                    const textColor = el.textColor ? this.parseVariableColor(el.textColor) : '#FFF';
+                    const iconColor = el.iconColor ? this.parseVariableColor(el.iconColor) : '#AAA';
+                    const fontSize = `${parseFloat(el.fontSize || '0.035') * 100}cqh`;
+                    
+                    let fontFamily = 'sans-serif';
+                    if (el.fontPath && this.fonts[el.fontPath.toLowerCase()]) {
+                        fontFamily = `'${this.fonts[el.fontPath.toLowerCase()].name}', monospace`;
+                    }
+                    
+                    cont.innerHTML = `
+                        <div style="display:flex; align-items:center; gap:5px;"><div style="width:20px; height:20px; border-radius:50%; background:${iconColor};"></div><span style="color:${textColor}; font-size:${fontSize}; font-family:${fontFamily};">SELECT</span></div>
+                        <div style="display:flex; align-items:center; gap:5px;"><div style="width:20px; height:20px; border-radius:50%; background:${iconColor};"></div><span style="color:${textColor}; font-size:${fontSize}; font-family:${fontFamily};">BACK</span></div>
+                    `;
+                    monitor.appendChild(cont);
+                    return;
+                }
+
+                if (el.tag === 'image' || el.tag === 'video') {
+                    let mediaType = 'img';
+                    if (el.tag === 'video') {
+                        mediaType = 'video';
+                    }
+                    
+                    const media = document.createElement(mediaType);
+                    
+                    if (el.tag === 'video') { 
+                        media.autoplay = true; 
+                        media.loop = true; 
+                        media.muted = true; 
+                    }
+                    
+                    media.className = 'es-content-media';
+                    media.style.objectFit = (w > 0 || h > 0) ? 'fill' : 'contain';
+                    
+                    if (el.tile === 'true') {
+                        media.style.objectFit = 'none';
+                        media.style.objectPosition = 'top left';
+                    }
+                    
+                    if (this.images[el.id]) {
+                        media.src = this.images[el.id].url;
+                        cont.appendChild(media);
+                    } else if (el.path && el.path.trim() !== '') {
+                        media.src = el.path;
+                        media.onerror = function() {
+                            this.style.display = 'none';
+                            cont.style.backgroundColor = el.extra ? 'rgba(0,255,255,0.1)' : 'rgba(255,0,255,0.1)';
+                            cont.innerHTML = `<div style="margin:auto; font-size:10px; color:#aaa; text-align:center;">Missing:<br>${el.path.split('/').pop()}</div>`;
+                        };
+                        cont.appendChild(media);
+                    } else {
+                        cont.style.backgroundColor = el.extra ? 'rgba(0,255,255,0.1)' : 'rgba(255,0,255,0.1)';
+                        cont.innerHTML = `<div style="margin:auto; font-size:12px; color:#aaa;">[${el.name}]</div>`;
+                    }
+                } 
+                else if (el.tag === 'text' || el.tag === 'datetime') {
+                    const txt = document.createElement('div');
+                    txt.className = 'es-content-txt';
+                    
+                    if (el.tag === 'datetime') {
+                        txt.innerText = "12/31/2026";
+                    } else {
+                        txt.innerText = el.text;
+                    }
+                    
+                    txt.style.color = this.parseVariableColor(el.color);
+                    txt.style.textAlign = el.alignment || 'left';
+                    txt.style.fontSize = `${parseFloat(el.fontSize || '0.030') * 100}cqh`;
+                    
+                    if (el.forceUppercase === 'true') txt.style.textTransform = 'uppercase';
+                    if (el.lineSpacing) txt.style.lineHeight = el.lineSpacing;
+                    
+                    if (el.fontPath) {
+                        const lookupPath = el.fontPath.toLowerCase();
+                        if (this.fonts[lookupPath]) {
+                            txt.style.fontFamily = `'${this.fonts[lookupPath].name}', monospace`;
+                        } else {
+                            const autoName = `auto_${lookupPath.replace(/[^a-zA-Z0-9]/g, '')}`;
+                            if (!this.autoFonts[lookupPath]) {
+                                this.autoFonts[lookupPath] = autoName;
+                                const style = document.createElement('style');
+                                style.innerHTML = `@font-face { font-family: '${autoName}'; src: url('${el.fontPath}'); }`;
+                                document.head.appendChild(style);
+                            }
+                            txt.style.fontFamily = `'${autoName}', monospace`;
+                        }
+                    }
+
+                    cont.appendChild(txt);
+                }
+                
+                monitor.appendChild(cont);
+            });
+        },
+
+        processRawXML: function(raw) {
+            if (!raw.trim()) {
+                alert("No XML found to parse.");
+                return;
+            }
+            
+            let parts = raw.split('\x3C!--');
+            raw = parts[0] + parts.slice(1).map(p => {
+                let end = p.indexOf('--\x3E');
+                if (end !== -1) {
+                    return p.substring(end + 3);
+                } else {
+                    return p;
+                }
+            }).join('');
+            
+            raw = raw.replace(new RegExp("&(?!amp;|lt;|gt;|quot;|apos;)", "g"), "&amp;");
+            
+            try {
+                const doc = new DOMParser().parseFromString(`<root>${raw}</root>`, "text/xml");
+                
+                const parserErr = doc.querySelector("parsererror");
+                if (parserErr) {
+                    const errText = parserErr.textContent.split('\n')[0];
+                    throw new Error("Strict XML Syntax Error found: " + errText);
+                }
+                
+                const viewNodes = doc.querySelectorAll('view');
+                if (viewNodes.length === 0) {
+                    throw new Error("No <view> tags found in the XML.");
+                }
+
+                const vars = doc.querySelector('variables');
+                if (vars) {
+                    Array.from(vars.children).forEach(v => {
+                        this.variables[v.tagName] = v.textContent.trim();
+                    });
+                }
+
+                this.views.forEach(v => {
+                    this.data[v].forEach(el => {
+                        el.visible = false;
+                    });
+                    this.data[v] = this.data[v].filter(el => {
+                        return !el.extra;
+                    });
+                });
+
+                viewNodes.forEach(viewNode => {
+                    const viewNamesStr = viewNode.getAttribute('name');
+                    const viewTargets = viewNamesStr.split(',').map(s => s.trim());
+                    
+                    viewTargets.forEach(viewTarget => {
+                        if (this.views.includes(viewTarget)) {
+                            Array.from(viewNode.children).forEach(child => {
+                                if (!child.tagName || !child.getAttribute('name')) {
+                                    return;
+                                }
+                                
+                                const schema = ES_SCHEMA[child.tagName];
+                                if (!schema) return; 
+                                
+                                const childNamesStr = child.getAttribute('name');
+                                const childNames = childNamesStr.split(',').map(n => n.trim());
+                                
+                                childNames.forEach(name => {
+                                    let targetEl = this.data[viewTarget].find(e => {
+                                        return e.name === name;
+                                    });
+                                    
+                                    if (!targetEl) {
+                                        let isExtra = false;
+                                        if (child.getAttribute('extra') === 'true') {
+                                            isExtra = true;
+                                        }
+                                        targetEl = this.createElement(child.tagName, name, isExtra, true);
+                                        this.data[viewTarget].push(targetEl);
+                                    }
+                                    
+                                    targetEl.visible = true;
+
+                                    schema.forEach(prop => {
+                                        const node = child.querySelector(prop);
+                                        if (node) {
+                                            if (ARRAY_PROPS.includes(prop)) {
+                                                const vals = node.textContent.trim().split(/\s+/);
+                                                const val0 = vals[0] ? vals[0] : '0';
+                                                const val1 = vals[1] ? vals[1] : '0';
+                                                targetEl[prop] = [val0, val1];
+                                            } else {
+                                                targetEl[prop] = node.textContent.trim();
+                                            }
+                                        }
+                                    });
+                                });
+                            });
+                        }
+                    });
+                });
+                
+                alert("XML File Successfully Parsed with Strict Schema!");
+                
+                const firstViewNames = viewNodes[0].getAttribute('name').split(',');
+                const firstFound = firstViewNames[0].trim();
+                
+                if (this.views.includes(firstFound)) {
+                    this.switchView(firstFound);
+                } else {
+                    this.renderControls();
+                }
+                
+            } catch (e) { 
+                alert("XML Parse Error: \n\n" + e.message + "\n\nPlease check your XML for syntax typos."); 
+                console.error(e);
+            }
+        },
+
+        // THE DEEP COMPILER ENGINE
+        compileXML: function(viewsToCompile) {
+            let out = "";
+            const ExportData = {};
+            
+            // 1. Snapshot all valid properties across requested views
+            viewsToCompile.forEach(v => {
+                ExportData[v] = {};
+                this.data[v].forEach(el => {
+                    if (!el.visible) return;
+                    const schema = ES_SCHEMA[el.tag];
+                    if (!schema) return;
+                    
+                    let props = {};
+                    
+                    // Pre-compress graveyard coordinates
+                    if (parseFloat(el.pos[0]) >= 1 || parseFloat(el.pos[1]) >= 1) {
+                        props = { pos: '2 2' };
+                    } else {
+                        schema.forEach(prop => {
+                            if (ARRAY_PROPS.includes(prop)) {
+                                const v0 = parseFloat(el[prop][0]);
+                                const v1 = parseFloat(el[prop][1]);
+                                if (prop === 'pos' || v0 !== 0 || v1 !== 0) {
+                                    props[prop] = `${el[prop][0]} ${el[prop][1]}`;
+                                }
+                            } else {
+                                if (el[prop] !== undefined && el[prop] !== '') {
+                                    props[prop] = el[prop];
+                                }
+                            }
+                        });
+                    }
+                    
+                    if (Object.keys(props).length > 0) {
+                        ExportData[v][el.name] = { tag: el.tag, props: props, extra: el.extra };
+                    }
+                });
+            });
+
+            const OutputBlocks = {}; 
+            const addBlock = (viewStr, tag, names, props, extra) => {
+                if (!OutputBlocks[viewStr]) OutputBlocks[viewStr] = [];
+                OutputBlocks[viewStr].push({ tag, names, props, extra });
+            };
+
+            // 2. Extract Shared Styling Clusters Across Views
+            const StyleMap = {}; 
+            viewsToCompile.forEach(v => {
+                for (const name in ExportData[v]) {
+                    const el = ExportData[v][name];
+                    let gProps = {};
+                    let hasGProps = false;
+                    
+                    GROUPABLE_PROPS.forEach(gp => {
+                        if (el.props[gp] !== undefined) {
+                            gProps[gp] = el.props[gp];
+                            hasGProps = true;
+                        }
+                    });
+                    
+                    if (hasGProps) {
+                        const json = JSON.stringify(gProps);
+                        if (!StyleMap[el.tag]) StyleMap[el.tag] = {};
+                        if (!StyleMap[el.tag][json]) StyleMap[el.tag][json] = {};
+                        if (!StyleMap[el.tag][json][name]) StyleMap[el.tag][json][name] = new Set();
+                        StyleMap[el.tag][json][name].add(v);
+                    }
+                }
+            });
+
+            for (const tag in StyleMap) {
+                for (const json in StyleMap[tag]) {
+                    const viewComboMap = {};
+                    for (const name in StyleMap[tag][json]) {
+                        const views = Array.from(StyleMap[tag][json][name]).sort();
+                        const viewStr = views.join(', ');
+                        if (!viewComboMap[viewStr]) viewComboMap[viewStr] = [];
+                        viewComboMap[viewStr].push(name);
+                    }
+
+                    for (const viewStr in viewComboMap) {
+                        const names = viewComboMap[viewStr].sort();
+                        const views = viewStr.split(', ');
+                        
+                        // Extract if multiple elements or multiple views share this exact style signature
+                        if (names.length > 1 || views.length > 1) {
+                            const props = JSON.parse(json);
+                            addBlock(viewStr, tag, names, props, false);
+                            
+                            views.forEach(v => {
+                                names.forEach(n => {
+                                    for (const p in props) {
+                                        delete ExportData[v][n].props[p];
+                                    }
+                                });
+                            });
+                        }
+                    }
+                }
+            }
+
+            // 3. Extract Remaining Identical Element Properties (Coordinates, Paths, etc)
+            const RemainingMap = {}; 
+            viewsToCompile.forEach(v => {
+                for (const name in ExportData[v]) {
+                    const el = ExportData[v][name];
+                    if (Object.keys(el.props).length === 0) continue;
+                    
+                    const json = JSON.stringify(el.props);
+                    if (!RemainingMap[el.tag]) RemainingMap[el.tag] = {};
+                    if (!RemainingMap[el.tag][json]) RemainingMap[el.tag][json] = {};
+                    if (!RemainingMap[el.tag][json][name]) RemainingMap[el.tag][json][name] = new Set();
+                    RemainingMap[el.tag][json][name].add(v);
+                }
+            });
+
+            for (const tag in RemainingMap) {
+                for (const json in RemainingMap[tag]) {
+                    const viewComboMap = {};
+                    for (const name in RemainingMap[tag][json]) {
+                        const views = Array.from(RemainingMap[tag][json][name]).sort();
+                        const viewStr = views.join(', ');
+                        if (!viewComboMap[viewStr]) viewComboMap[viewStr] = [];
+                        viewComboMap[viewStr].push(name);
+                    }
+
+                    for (const viewStr in viewComboMap) {
+                        const names = viewComboMap[viewStr].sort();
+                        const views = viewStr.split(', ');
+                        const props = JSON.parse(json);
+                        const isExtra = names.some(n => ExportData[views[0]][n].extra);
+                        
+                        addBlock(viewStr, tag, names, props, isExtra);
+                        
+                        views.forEach(v => {
+                            names.forEach(n => {
+                                delete ExportData[v][n]; 
+                            });
+                        });
+                    }
+                }
+            }
+
+            // 4. Assemble the Output Blocks
+            const viewCombos = Object.keys(OutputBlocks).sort((a, b) => {
+                const countA = a.split(',').length;
+                const countB = b.split(',').length;
+                if (countA !== countB) return countB - countA; 
+                return a.localeCompare(b);
+            });
+
+            viewCombos.forEach(viewStr => {
+                out += `    <view name="${viewStr}">\n\n`;
+                
+                const blocks = OutputBlocks[viewStr].sort((a, b) => {
+                    const aIsStyle = Object.keys(a.props).some(p => GROUPABLE_PROPS.includes(p)) && !Object.keys(a.props).includes('pos');
+                    const bIsStyle = Object.keys(b.props).some(p => GROUPABLE_PROPS.includes(p)) && !Object.keys(b.props).includes('pos');
+                    const aIsGrave = a.props.pos === '2 2';
+                    const bIsGrave = b.props.pos === '2 2';
+                    
+                    if (aIsGrave && !bIsGrave) return 1;
+                    if (!aIsGrave && bIsGrave) return -1;
+                    if (aIsStyle && !bIsStyle) return -1;
+                    if (!aIsStyle && bIsStyle) return 1;
+                    
+                    return a.tag.localeCompare(b.tag);
+                });
+
+                let currentSection = '';
+
+                blocks.forEach(block => {
+                    const isStyle = Object.keys(block.props).some(p => GROUPABLE_PROPS.includes(p)) && !Object.keys(block.props).includes('pos');
+                    const isGrave = block.props.pos === '2 2' && Object.keys(block.props).length === 1;
+                    
+                    let sectionLabel = 'INDIVIDUAL ELEMENTS / ASSETS';
+                    if (isStyle) sectionLabel = 'SHARED PROPERTIES';
+                    if (isGrave) sectionLabel = 'OFF-SCREEN ELEMENTS';
+                    
+                    if (sectionLabel !== currentSection) {
+                        out += `        \n`;
+                        currentSection = sectionLabel;
+                    }
+
+                    const extraAttr = block.extra ? ' extra="true"' : '';
+                    out += `        <${block.tag} name="${block.names.join(', ')}"${extraAttr}>\n`;
+                    for (const prop in block.props) {
+                        out += `            <${prop}>${block.props[prop]}</${prop}>\n`;
+                    }
+                    out += `        </${block.tag}>\n\n`;
+                });
+
+                out += `    </view>\n\n`;
+            });
+
+            return out;
+        },
+        
+        exportCurrentView: function() {
+            let out = `\x3C!-- Exported View: ${this.currentView} --\x3E\n`;
+            out += this.compileXML([this.currentView]);
+            
+            document.getElementById('raw-input-area').style.display = 'block';
+            document.getElementById('xml-io').value = out;
+            alert("Current View XML has been exported to the text box!");
+        },
+
+        exportFullThemeXML: function() {
+            let fullOut = `\x3C!-- Compiled by ES Theme Studio v3.2 --\x3E\n<theme>\n    <formatVersion>4</formatVersion>\n\n`;
+            
+            if (Object.keys(this.variables).length > 0) {
+                fullOut += `    <variables>\n`;
+                for (const [k, v] of Object.entries(this.variables)) {
+                    fullOut += `        <${k}>${v}</${k}>\n`;
+                }
+                fullOut += `    </variables>\n\n`;
+            }
+
+            fullOut += this.compileXML(this.views);
+            fullOut += `</theme>`;
+            
+            const blob = new Blob([fullOut], { type: 'text/xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'theme.xml';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    };
+    
+    window.onload = function() {
+        app.init();
+    };
+</script>
+</body>
+</html>
