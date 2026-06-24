@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ES Theme Studio v3.40 (Deep Compiler)</title>
+    <title>ES Theme Studio v3.44 (Deep Compiler)</title>
     <style>
         :root { --bg: #1a0b2e; --panel: #111; --border: #FF00FF; --text: #00FFFF; }
         body { margin: 0; padding: 0; background: var(--bg); color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; height: 100vh; overflow: hidden; }
@@ -73,7 +73,7 @@
 <button id="sidebar-toggle" onclick="app.toggleSidebar()" title="Toggle Sidebar">&#9664;</button>
 
 <div id="sidebar">
-    <div class="header"><h2>ES Theme Studio v3.40</h2></div>
+    <div class="header"><h2>ES Theme Studio v3.44</h2></div>
     <div class="actions" style="border-bottom: 1px solid #333; border-top: none;">
         
         <div id="drop-zone" onclick="document.getElementById('file-input').click()">
@@ -148,6 +148,17 @@
         }
     };
 
+    const MD_LBL_DEFAULTS = {
+        'md_lbl_rating':      'Rating',
+        'md_lbl_releasedate': 'Release Date',
+        'md_lbl_developer':   'Developer',
+        'md_lbl_publisher':   'Publisher',
+        'md_lbl_genre':       'Genre',
+        'md_lbl_players':     'Players',
+        'md_lbl_lastplayed':  'Last Played',
+        'md_lbl_playcount':   'Play Count',
+    };
+
     const ARRAY_PROPS = ['pos', 'size', 'maxSize', 'origin', 'rotationOrigin', 'logoSize', 'logoRotationOrigin', 'backgroundCornerSize'];
     
     // Properties eligible for automatic cross-view cluster compression
@@ -210,8 +221,10 @@
             el.esVisible = 'true';  // ES treats missing <visible> as true
             // el.visible is set by the caller (false for init, true when parsed from XML)
             if (tag === 'text') {
-                el.text = `[${name}]`;
+                el.text = MD_LBL_DEFAULTS[name] || `[${name}]`;
             }
+            // md_lbl elements have conditional text export — default off
+            el.exportText = (MD_LBL_DEFAULTS[name] !== undefined) ? false : true;
 
             return el;
         },
@@ -439,6 +452,14 @@
                 .replace(/\$\{system\.theme\}/g,    this.systemVars['system.theme']);
         },
 
+        setExportText: function(id, checked) {
+            const el = this.data[this.currentView].find(e => e.id === id);
+            if (el) {
+                el.exportText = checked;
+                this.renderControls();
+            }
+        },
+
         toggleVisibility: function(id, visible) {
             const el = this.data[this.currentView].find(e => e.id === id);
             if (el) el.visible = visible;
@@ -638,7 +659,22 @@
                             visibleControls += `<div class="input-group"><label>horizontalMargin</label><input type="number" step="0.01" value="${el.horizontalMargin}" oninput="app.updateElement('${el.id}', 'horizontalMargin', this.value)"></div>`;
                         }
                         if (schema.includes('text')) {
-                            visibleControls += `<div class="input-group full-width"><label>Dummy Text Preview</label><input type="text" value="${el.text}" oninput="app.updateElement('${el.id}', 'text', this.value)"></div>`;
+                            if (MD_LBL_DEFAULTS[el.name] !== undefined) {
+                                // md_lbl element — show ES default as placeholder, checkbox controls export
+                                visibleControls += `
+                                    <div class="full-width" style="margin-bottom:6px;">
+                                        <label style="display:flex; align-items:center; gap:6px; font-size:10px; color:#aaa; cursor:pointer;">
+                                            <input type="checkbox" ${el.exportText ? 'checked' : ''} onchange="app.setExportText('${el.id}', this.checked)" style="width:auto; margin:0;">
+                                            Export Custom Text
+                                        </label>
+                                    </div>
+                                    <div class="input-group full-width" style="${el.exportText ? '' : 'opacity:0.4; pointer-events:none;'}">
+                                        <label>Custom Text <span style="color:#555;">(ES default: "${MD_LBL_DEFAULTS[el.name]}")</span></label>
+                                        <input type="text" value="${el.text}" placeholder="${MD_LBL_DEFAULTS[el.name]}" oninput="app.updateElement('${el.id}', 'text', this.value)">
+                                    </div>`;
+                            } else {
+                                visibleControls += `<div class="input-group full-width"><label>Text Content</label><input type="text" value="${el.text}" oninput="app.updateElement('${el.id}', 'text', this.value)"></div>`;
+                            }
                         }
                         if (schema.includes('format')) {
                             visibleControls += `<div class="input-group full-width"><label>format (e.g. %m/%d/%Y)</label><input type="text" value="${el.format}" oninput="app.updateElement('${el.id}', 'format', this.value)"></div>`;
@@ -855,7 +891,12 @@
             
             this.data[this.currentView].forEach(el => {
                 if (!el.visible || el.tag === 'gridtile') {
-                    return; 
+                    return;
+                }
+
+                // On system view, logo and logoText are rendered inside the carousel — skip standalone
+                if (this.currentView === 'system' && (el.name === 'logo' || el.name === 'logoText')) {
+                    return;
                 }
 
                 const cont = document.createElement('div');
@@ -1015,7 +1056,7 @@
                 if (el.tag === 'helpsystem') {
                     cont.style.display = 'flex';
                     cont.style.alignItems = 'center';
-                    cont.style.justifyContent = 'flex-end';
+                    cont.style.justifyContent = 'flex-start';
                     cont.style.gap = '15px';
                     cont.style.paddingRight = '20px';
                     
@@ -1138,28 +1179,23 @@
                         `;
 
                         // Try to show logo image, fall back to logoText
+                        const rawLogoPath = logoEl ? logoEl.path : null;
+                        const resolvedLogoPath = rawLogoPath ? this.resolvePathVars(rawLogoPath) : null;
                         const logoImgSrc = logoEl && this.images[logoEl.id] ? this.images[logoEl.id].url
-                            : (logoEl && logoEl.path && !logoEl.path.includes('\${') ? this.resolvePathVars(logoEl.path) : null);
+                            : (resolvedLogoPath && !resolvedLogoPath.includes('${') ? resolvedLogoPath : null);
 
                         if (logoImgSrc) {
                             const img = document.createElement('img');
                             img.src = logoImgSrc;
                             img.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain; pointer-events:none;';
-                            if (logoEl && logoEl.color) {
-                                img.style.filter = `opacity(1)`;  // color tinting not trivially possible in CSS
-                            }
+                            img.onerror = () => {
+                                slot.removeChild(img);
+                                const ltxt = this.makeLogoText(logoTextEl);
+                                slot.appendChild(ltxt);
+                            };
                             slot.appendChild(img);
                         } else {
-                            // Fallback to logoText
-                            const ltxt = document.createElement('div');
-                            const ltColor = logoTextEl && logoTextEl.color ? this.parseVariableColor(logoTextEl.color) : '#000';
-                            ltxt.style.cssText = `color:${ltColor}; font-size:${parseFloat(logoTextEl && logoTextEl.fontSize || '0.05') * 100}cqh; text-align:center; padding:4px; pointer-events:none; overflow:hidden;`;
-                            if (logoTextEl && logoTextEl.forceUppercase === 'true') ltxt.style.textTransform = 'uppercase';
-                            if (logoTextEl && logoTextEl.fontPath && this.fonts[logoTextEl.fontPath.toLowerCase()]) {
-                                ltxt.style.fontFamily = `'${this.fonts[logoTextEl.fontPath.toLowerCase()].name}', sans-serif`;
-                            }
-                            ltxt.innerText = logoTextEl && logoTextEl.text ? logoTextEl.text : '[System Name]';
-                            slot.appendChild(ltxt);
+                            slot.appendChild(this.makeLogoText(logoTextEl));
                         }
 
                         cont.appendChild(slot);
@@ -1225,6 +1261,18 @@
                 
                 monitor.appendChild(cont);
             });
+        },
+
+        makeLogoText: function(logoTextEl) {
+            const ltxt = document.createElement('div');
+            const ltColor = logoTextEl && logoTextEl.color ? this.parseVariableColor(logoTextEl.color) : '#000';
+            ltxt.style.cssText = `color:${ltColor}; font-size:${parseFloat(logoTextEl && logoTextEl.fontSize || '0.05') * 100}cqh; text-align:center; padding:4px; pointer-events:none; overflow:hidden;`;
+            if (logoTextEl && logoTextEl.forceUppercase === 'true') ltxt.style.textTransform = 'uppercase';
+            if (logoTextEl && logoTextEl.fontPath && this.fonts[logoTextEl.fontPath.toLowerCase()]) {
+                ltxt.style.fontFamily = `'${this.fonts[logoTextEl.fontPath.toLowerCase()].name}', sans-serif`;
+            }
+            ltxt.innerText = logoTextEl && logoTextEl.text ? logoTextEl.text : '[System Name]';
+            return ltxt;
         },
 
         showWarning: function(msg) {
@@ -1341,6 +1389,10 @@
                                                 targetEl[prop] = [val0, val1];
                                             } else {
                                                 targetEl[prop] = node.textContent.trim();
+                                                // If an md_lbl element has an explicit <text> in XML, mark it for export
+                                                if (prop === 'text' && MD_LBL_DEFAULTS[targetEl.name] !== undefined) {
+                                                    targetEl.exportText = true;
+                                                }
                                             }
                                         }
                                     });
@@ -1405,6 +1457,10 @@
                                 }
                             } else {
                                 if (el[prop] !== undefined && el[prop] !== '') {
+                                    // Skip <text> for md_lbl elements unless user opted in
+                                    if (prop === 'text' && MD_LBL_DEFAULTS[el.name] !== undefined && !el.exportText) {
+                                        return;
+                                    }
                                     props[prop] = el[prop];
                                 }
                             }
@@ -1585,7 +1641,7 @@
         },
 
         exportFullThemeXML: function() {
-            let fullOut = `\x3C!-- Compiled by ES Theme Studio v3.40 --\x3E\n<theme>\n    <formatVersion>4</formatVersion>\n\n`;
+            let fullOut = `\x3C!-- Compiled by ES Theme Studio v3.44 --\x3E\n<theme>\n    <formatVersion>4</formatVersion>\n\n`;
             
             if (Object.keys(this.variables).length > 0) {
                 fullOut += `    <variables>\n`;
