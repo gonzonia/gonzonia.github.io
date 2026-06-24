@@ -2,13 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ES Theme Studio v3.2 (Deep Compiler)</title>
+    <title>ES Theme Studio v3.40 (Deep Compiler)</title>
     <style>
         :root { --bg: #1a0b2e; --panel: #111; --border: #FF00FF; --text: #00FFFF; }
         body { margin: 0; padding: 0; background: var(--bg); color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; height: 100vh; overflow: hidden; }
         
-        #sidebar { width: 450px; background: #0a0414; border-right: 2px solid var(--border); display: flex; flex-direction: column; z-index: 50; }
-        #main { flex-grow: 1; display: flex; flex-direction: column; }
+        #sidebar { width: 450px; background: #0a0414; border-right: 2px solid var(--border); display: flex; flex-direction: column; z-index: 50; transition: width 0.3s ease, min-width 0.3s ease; overflow: hidden; min-width: 450px; }
+        #sidebar.collapsed { width: 0; min-width: 0; border-right: none; }
+        #main { flex-grow: 1; display: flex; flex-direction: column; transition: flex 0.3s ease; }
+
+        #sidebar-toggle { position: absolute; top: 50%; left: 450px; transform: translateY(-50%); z-index: 100; background: #FF00FF; border: none; color: #fff; font-size: 14px; font-weight: bold; width: 18px; height: 48px; cursor: pointer; border-radius: 0 6px 6px 0; transition: left 0.3s ease; padding: 0; line-height: 1; }
+        #sidebar-toggle:hover { background: #cc00cc; }
         
         .header { padding: 15px; border-bottom: 1px solid #333; }
         .header h2 { margin: 0; color: #FF00FF; text-transform: uppercase; font-size: 20px; }
@@ -44,17 +48,32 @@
         
         .es-container { position: absolute; box-sizing: border-box; overflow: hidden; display: flex; cursor: pointer; transition: outline 0.1s; }
         .es-container.debug { border: 1px dashed rgba(255,255,255,0.4); }
-        .es-container:hover { outline: 2px solid #FFF; z-index: 9999 !important; }
+        .es-container:hover { outline: 2px solid #FFF; }
         .es-content-media { width: 100%; height: 100%; pointer-events: none; }
         .es-content-txt { width: 100%; height: 100%; line-height: 1.2; word-wrap: break-word; pointer-events: none; }
         
         .highlight-card { background: #002233 !important; border-left-color: #00FFFF !important; box-shadow: 0 0 20px rgba(0, 255, 255, 0.5) !important; transform: scale(1.02); transition: all 0.3s ease; z-index: 10; position: relative; }
+
+        /* System Variable Modal */
+        #sysvar-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center; }
+        #sysvar-modal.open { display:flex; }
+        #sysvar-dialog { background:#0a0414; border:2px solid #FF00FF; border-radius:6px; padding:24px; width:420px; box-shadow:0 0 40px rgba(255,0,255,0.3); }
+        #sysvar-dialog h3 { margin:0 0 6px 0; color:#FF00FF; text-transform:uppercase; font-size:14px; }
+        #sysvar-dialog p { margin:0 0 18px 0; color:#aaa; font-size:11px; line-height:1.5; }
+        .sysvar-row { display:grid; grid-template-columns:140px 1fr; gap:8px; align-items:center; margin-bottom:10px; }
+        .sysvar-row label { color:#00FFFF; font-size:11px; font-family:monospace; }
+        .sysvar-row input { background:#222; color:#fff; border:1px solid #444; padding:5px 7px; font-size:12px; border-radius:2px; width:100%; box-sizing:border-box; }
+        .sysvar-actions { display:flex; gap:10px; margin-top:20px; justify-content:flex-end; }
+        #sysvar-btn { background:none; border:1px solid #FF00FF; color:#FF00FF; padding:6px 12px; font-size:11px; font-weight:bold; cursor:pointer; border-radius:3px; text-transform:uppercase; }
+        #sysvar-btn:hover { background:rgba(255,0,255,0.1); }
     </style>
 </head>
 <body>
 
+<button id="sidebar-toggle" onclick="app.toggleSidebar()" title="Toggle Sidebar">&#9664;</button>
+
 <div id="sidebar">
-    <div class="header"><h2>ES Theme Studio v3.2</h2></div>
+    <div class="header"><h2>ES Theme Studio v3.40</h2></div>
     <div class="actions" style="border-bottom: 1px solid #333; border-top: none;">
         
         <div id="drop-zone" onclick="document.getElementById('file-input').click()">
@@ -90,26 +109,56 @@
     </div>
 </div>
 
+<!-- System Variable Preview Modal -->
+<div id="sysvar-modal">
+    <div id="sysvar-dialog">
+        <h3>System Variable Preview</h3>
+        <p>These values are substituted into paths containing <code style="color:#00FFFF">${system.*}</code> variables for preview only. They are not saved or exported. Files must exist at the resolved path relative to this HTML file.</p>
+        <div class="sysvar-row"><label>${system.name}</label><input type="text" id="sysvar-name" placeholder="e.g. snes"></div>
+        <div class="sysvar-row"><label>${system.fullName}</label><input type="text" id="sysvar-fullname" placeholder="e.g. Super Nintendo"></div>
+        <div class="sysvar-row"><label>${system.theme}</label><input type="text" id="sysvar-theme" placeholder="e.g. snes"></div>
+        <div class="sysvar-actions">
+            <button class="btn" style="background:#555;" onclick="app.closeSysVarModal(false)">Cancel</button>
+            <button class="btn" onclick="app.closeSysVarModal(true)">Apply Preview</button>
+        </div>
+    </div>
+</div>
+
 <script>
     const ES_SCHEMA = {
-        image: ['pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'tile', 'color'],
-        video: ['pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'delay', 'showSnapshotNoVideo'],
-        text: ['pos', 'size', 'origin', 'zIndex', 'text', 'color', 'backgroundColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing'],
-        textlist: ['pos', 'size', 'origin', 'zIndex', 'selectorColor', 'selectedColor', 'primaryColor', 'secondaryColor', 'fontPath', 'fontSize', 'alignment', 'horizontalMargin', 'forceUppercase', 'lineSpacing'],
-        datetime: ['pos', 'size', 'origin', 'zIndex', 'color', 'fontPath', 'fontSize', 'alignment', 'format', 'displayRelative'],
-        rating: ['pos', 'size', 'origin', 'zIndex', 'filledPath', 'unfilledPath', 'color'],
-        imagegrid: ['pos', 'size', 'origin', 'zIndex', 'margin', 'autoLayout', 'imageSource', 'scrollDirection', 'centerSelection'],
-        gridtile: ['padding', 'backgroundColor', 'backgroundImage', 'imageColor', 'backgroundCenterColor', 'backgroundEdgeColor'],
-        helpsystem: ['pos', 'origin', 'textColor', 'iconColor', 'fontPath', 'fontSize']
+        image:      ['pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'default', 'tile', 'color', 'esVisible', 'rotation', 'rotationOrigin'],
+        video:      ['pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'default', 'delay', 'showSnapshotNoVideo', 'showSnapshotDelay', 'esVisible', 'rotation', 'rotationOrigin'],
+        text:       ['pos', 'size', 'origin', 'zIndex', 'text', 'color', 'backgroundColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing', 'esVisible', 'rotation', 'rotationOrigin'],
+        textlist:   ['pos', 'size', 'origin', 'zIndex', 'selectorColor', 'selectorImagePath', 'selectorImageTile', 'selectorHeight', 'selectorOffsetY', 'selectedColor', 'primaryColor', 'secondaryColor', 'fontPath', 'fontSize', 'alignment', 'horizontalMargin', 'forceUppercase', 'lineSpacing', 'scrollSound'],
+        datetime:   ['pos', 'size', 'origin', 'zIndex', 'color', 'backgroundColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing', 'format', 'displayRelative', 'esVisible', 'rotation', 'rotationOrigin'],
+        rating:     ['pos', 'size', 'origin', 'zIndex', 'filledPath', 'unfilledPath', 'color', 'esVisible', 'rotation', 'rotationOrigin'],
+        imagegrid:  ['pos', 'size', 'origin', 'zIndex', 'margin', 'padding', 'autoLayout', 'autoLayoutSelectedZoom', 'imageSource', 'gameImage', 'folderImage', 'scrollDirection', 'centerSelection', 'scrollLoop', 'animate'],
+        gridtile:   ['size', 'padding', 'imageColor', 'backgroundImage', 'backgroundCornerSize', 'backgroundColor', 'backgroundCenterColor', 'backgroundEdgeColor'],
+        helpsystem: ['pos', 'origin', 'textColor', 'iconColor', 'fontPath', 'fontSize'],
+        ninepatch:  ['pos', 'size', 'path', 'esVisible', 'zIndex'],
+        sound:      ['path'],
+        carousel:   ['pos', 'size', 'origin', 'zIndex', 'type', 'color', 'logoSize', 'logoScale', 'logoRotation', 'logoRotationOrigin', 'logoAlignment', 'maxLogoCount'],
     };
 
-    const ARRAY_PROPS = ['pos', 'size', 'maxSize', 'origin'];
+    // Per-view property restrictions for elements whose themable props differ by view
+    const VIEW_SCHEMA_OVERRIDES = {
+        system: {
+            logo:     ['path', 'color'],
+            logoText: ['fontPath', 'color', 'forceUppercase', 'lineSpacing', 'text'],
+        }
+    };
+
+    const ARRAY_PROPS = ['pos', 'size', 'maxSize', 'origin', 'rotationOrigin', 'logoSize', 'logoRotationOrigin', 'backgroundCornerSize'];
     
     // Properties eligible for automatic cross-view cluster compression
     const GROUPABLE_PROPS = [
-        'color', 'fontSize', 'alignment', 'fontPath', 'lineSpacing', 'forceUppercase', 
-        'backgroundColor', 'textColor', 'iconColor', 'primaryColor', 'secondaryColor', 
-        'selectorColor', 'selectedColor', 'horizontalMargin', 'format', 'displayRelative'
+        'color', 'fontSize', 'alignment', 'fontPath', 'lineSpacing', 'forceUppercase',
+        'backgroundColor', 'textColor', 'iconColor', 'primaryColor', 'secondaryColor',
+        'selectorColor', 'selectedColor', 'horizontalMargin', 'format', 'displayRelative',
+        'esVisible', 'rotation', 'tile', 'scrollDirection', 'centerSelection', 'scrollLoop',
+        'animate', 'imageSource', 'type', 'logoAlignment', 'logoScale', 'logoRotation',
+        'maxLogoCount', 'showSnapshotNoVideo', 'showSnapshotDelay', 'displayRelative',
+        'selectorImageTile', 'autoLayoutSelectedZoom'
     ];
 
     const app = {
@@ -120,35 +169,46 @@
         fonts: {}, 
         images: {}, 
         autoFonts: {},
+        _idCounter: 0,
+        systemVars: { 'system.name': '', 'system.fullName': '', 'system.theme': '' },
 
         createElement: function(tag, name, extra = false, visible = false) {
             const el = {
-                id: `el_${name}_${Math.floor(Math.random() * 10000)}`,
-                tag: tag, 
-                name: name, 
-                extra: extra, 
+                id: `el_${name}_${++this._idCounter}`,
+                tag: tag,
+                name: name,
+                extra: extra,
                 visible: visible
             };
-            
+
             ARRAY_PROPS.forEach(p => {
                 el[p] = ['0.000', '0.000'];
             });
-            
+
             const scalarProps = [
-                'zIndex', 'path', 'tile', 'color', 'delay', 'showSnapshotNoVideo', 
-                'text', 'backgroundColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing', 
-                'selectorColor', 'selectedColor', 'primaryColor', 'secondaryColor', 'horizontalMargin', 
-                'format', 'displayRelative', 'filledPath', 'unfilledPath', 
-                'margin', 'autoLayout', 'imageSource', 'scrollDirection', 'centerSelection', 
-                'padding', 'backgroundImage', 'imageColor', 'backgroundCenterColor', 'backgroundEdgeColor', 
-                'textColor', 'iconColor'
+                'zIndex', 'path', 'default', 'tile', 'color', 'esVisible', 'rotation',
+                'delay', 'showSnapshotNoVideo', 'showSnapshotDelay',
+                'text', 'backgroundColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing',
+                'selectorColor', 'selectorImagePath', 'selectorImageTile', 'selectorHeight', 'selectorOffsetY',
+                'selectedColor', 'primaryColor', 'secondaryColor', 'horizontalMargin', 'scrollSound',
+                'format', 'displayRelative', 'filledPath', 'unfilledPath',
+                'margin', 'padding', 'autoLayout', 'autoLayoutSelectedZoom',
+                'imageSource', 'gameImage', 'folderImage',
+                'scrollDirection', 'centerSelection', 'scrollLoop', 'animate',
+                'backgroundImage', 'backgroundCornerSize', 'imageColor',
+                'backgroundColor', 'backgroundCenterColor', 'backgroundEdgeColor',
+                'textColor', 'iconColor',
+                'type', 'logoSize', 'logoScale', 'logoRotation', 'logoAlignment', 'maxLogoCount',
             ];
-            
+
             scalarProps.forEach(p => {
                 el[p] = '';
             });
 
+            // Defaults that differ from empty string
             el.zIndex = '10';
+            el.esVisible = 'true';  // ES treats missing <visible> as true
+            // el.visible is set by the caller (false for init, true when parsed from XML)
             if (tag === 'text') {
                 el.text = `[${name}]`;
             }
@@ -157,34 +217,80 @@
         },
 
         init: function() {
-            const baseElements = [
-                { tag: 'helpsystem', name: 'help' },
-                { tag: 'textlist', name: 'gamelist' },
-                { tag: 'imagegrid', name: 'gamegrid' },
-                { tag: 'gridtile', name: 'default' },
-                { tag: 'gridtile', name: 'selected' },
-                { tag: 'image', name: 'md_image' },
-                { tag: 'video', name: 'md_video' },
-                { tag: 'image', name: 'md_marquee' },
-                { tag: 'text', name: 'md_description' },
-                { tag: 'rating', name: 'md_rating' },
-                { tag: 'datetime', name: 'md_releasedate' },
-                { tag: 'text', name: 'md_developer' },
-                { tag: 'text', name: 'md_publisher' },
-                { tag: 'text', name: 'md_genre' },
-                { tag: 'text', name: 'md_players' },
-                { tag: 'text', name: 'md_playcount' },
+            // Shared metadata labels and values present in basic, detailed, video, grid
+            const mdLabels = [
                 { tag: 'text', name: 'md_lbl_rating' },
                 { tag: 'text', name: 'md_lbl_releasedate' },
                 { tag: 'text', name: 'md_lbl_developer' },
                 { tag: 'text', name: 'md_lbl_publisher' },
                 { tag: 'text', name: 'md_lbl_genre' },
                 { tag: 'text', name: 'md_lbl_players' },
-                { tag: 'text', name: 'md_lbl_playcount' }
+                { tag: 'text', name: 'md_lbl_lastplayed' },
+                { tag: 'text', name: 'md_lbl_playcount' },
             ];
-            
+            const mdValues = [
+                { tag: 'rating',   name: 'md_rating' },
+                { tag: 'datetime', name: 'md_releasedate' },
+                { tag: 'text',     name: 'md_developer' },
+                { tag: 'text',     name: 'md_publisher' },
+                { tag: 'text',     name: 'md_genre' },
+                { tag: 'text',     name: 'md_players' },
+                { tag: 'datetime', name: 'md_lastplayed' },
+                { tag: 'text',     name: 'md_playcount' },
+                { tag: 'text',     name: 'md_description' },
+                { tag: 'text',     name: 'md_name' },
+            ];
+            const commonBg = [
+                { tag: 'image',      name: 'background' },
+                { tag: 'image',      name: 'logo' },
+                { tag: 'text',       name: 'logoText' },
+                { tag: 'helpsystem', name: 'help' },
+            ];
+
+            const viewElements = {
+                system: [
+                    { tag: 'helpsystem', name: 'help' },
+                    { tag: 'carousel',   name: 'systemcarousel' },
+                    { tag: 'image',      name: 'logo' },
+                    { tag: 'text',       name: 'logoText' },
+                    { tag: 'text',       name: 'systemInfo' },
+                ],
+                basic: [
+                    ...commonBg,
+                    { tag: 'textlist', name: 'gamelist' },
+                    ...mdLabels,
+                    ...mdValues,
+                ],
+                detailed: [
+                    ...commonBg,
+                    { tag: 'textlist', name: 'gamelist' },
+                    { tag: 'image',    name: 'md_image' },
+                    { tag: 'image',    name: 'md_thumbnail' },
+                    ...mdLabels,
+                    ...mdValues,
+                ],
+                video: [
+                    ...commonBg,
+                    { tag: 'textlist', name: 'gamelist' },
+                    { tag: 'image',    name: 'md_image' },
+                    { tag: 'image',    name: 'md_thumbnail' },
+                    { tag: 'image',    name: 'md_marquee' },
+                    { tag: 'video',    name: 'md_video' },
+                    ...mdLabels,
+                    ...mdValues,
+                ],
+                grid: [
+                    ...commonBg,
+                    { tag: 'imagegrid', name: 'gamegrid' },
+                    { tag: 'gridtile',  name: 'default' },
+                    { tag: 'gridtile',  name: 'selected' },
+                    ...mdLabels,
+                    ...mdValues,
+                ],
+            };
+
             this.views.forEach(v => {
-                this.data[v] = baseElements.map(base => {
+                this.data[v] = (viewElements[v] || []).map(base => {
                     return this.createElement(base.tag, base.name, false, false);
                 });
             });
@@ -198,6 +304,13 @@
                 };
                 document.getElementById('tabs-container').appendChild(tab);
             });
+
+            const sysVarBtn = document.createElement('div');
+            sysVarBtn.id = 'sysvar-btn';
+            sysVarBtn.title = 'Set system variable preview values';
+            sysVarBtn.innerText = '${system.*}';
+            sysVarBtn.onclick = () => this.openSysVarModal();
+            document.getElementById('tabs-container').appendChild(sysVarBtn);
             
             this.setupDragAndDrop();
             this.renderControls();
@@ -275,6 +388,63 @@
             this.renderControls();
         },
 
+        toggleSidebar: function() {
+            const sidebar = document.getElementById('sidebar');
+            const btn = document.getElementById('sidebar-toggle');
+            const collapsed = sidebar.classList.toggle('collapsed');
+            btn.style.left = collapsed ? '0' : '450px';
+            btn.innerHTML = collapsed ? '&#9654;' : '&#9664;';
+        },
+
+        openSysVarModal: function() {
+            document.getElementById('sysvar-name').value = this.systemVars['system.name'];
+            document.getElementById('sysvar-fullname').value = this.systemVars['system.fullName'];
+            document.getElementById('sysvar-theme').value = this.systemVars['system.theme'];
+            document.getElementById('sysvar-modal').classList.add('open');
+        },
+
+        closeSysVarModal: function(apply) {
+            document.getElementById('sysvar-modal').classList.remove('open');
+            if (!apply) return;
+
+            const newVars = {
+                'system.name':     document.getElementById('sysvar-name').value.trim(),
+                'system.fullName': document.getElementById('sysvar-fullname').value.trim(),
+                'system.theme':    document.getElementById('sysvar-theme').value.trim(),
+            };
+
+            // Only re-render if values changed AND XML has been loaded with variable paths
+            const changed = Object.keys(newVars).some(k => newVars[k] !== this.systemVars[k]);
+            this.systemVars = newVars;
+
+            if (changed && this.hasVariablePaths()) {
+                this.renderMonitor();
+            }
+        },
+
+        hasVariablePaths: function() {
+            // Check if any visible element in any view has a path containing ${system.*}
+            return this.views.some(v =>
+                this.data[v].some(el =>
+                    el.visible && el.path && el.path.includes('${system.')
+                )
+            );
+        },
+
+        resolvePathVars: function(path) {
+            if (!path || !path.includes('${')) return path;
+            return path
+                .replace(/\$\{system\.name\}/g,     this.systemVars['system.name'])
+                .replace(/\$\{system\.fullName\}/g, this.systemVars['system.fullName'])
+                .replace(/\$\{system\.theme\}/g,    this.systemVars['system.theme']);
+        },
+
+        toggleVisibility: function(id, visible) {
+            const el = this.data[this.currentView].find(e => e.id === id);
+            if (el) el.visible = visible;
+            this.renderControls();
+        },
+
         updateElement: function(id, key, value, index = null) {
             const el = this.data[this.currentView].find(e => {
                 return e.id === id;
@@ -346,7 +516,7 @@
 
         renderControls: function() {
             const container = document.getElementById('controls-container');
-            container.innerHTML = '';
+            let allCardsHTML = '';
             
             const sortedElements = [...this.data[this.currentView]].sort((a, b) => {
                 if (a.visible === b.visible) {
@@ -356,7 +526,8 @@
             });
             
             sortedElements.forEach(el => {
-                const schema = ES_SCHEMA[el.tag] || [];
+                const viewOverrides = VIEW_SCHEMA_OVERRIDES[this.currentView] || {};
+                const schema = viewOverrides[el.name] || ES_SCHEMA[el.tag] || [];
                 let visibleControls = '';
                 
                 if (el.visible) {
@@ -404,7 +575,11 @@
                         const lookupPath = el.fontPath ? el.fontPath.toLowerCase() : '';
                         let fontBadge = '';
                         if (lookupPath && this.fonts[lookupPath]) {
-                            fontBadge = `<span style="color:#32CD32; float:right; font-weight:bold;">✓ Linked (${this.fonts[lookupPath].fileName})</span>`;
+                            if (this.fonts[lookupPath].autoLoaded) {
+                                fontBadge = `<span style="color:#00BFFF; float:right; font-weight:bold;">✓ Found (${this.fonts[lookupPath].fileName})</span>`;
+                            } else {
+                                fontBadge = `<span style="color:#32CD32; float:right; font-weight:bold;">✓ Linked (${this.fonts[lookupPath].fileName})</span>`;
+                            }
                         }
                         
                         visibleControls += `
@@ -476,7 +651,11 @@
                         if (schema.includes(pProp)) {
                             let imgBadge = '';
                             if (pProp === 'path' && this.images[el.id]) {
-                                imgBadge = `<span style="color:#32CD32; float:right; font-weight:bold;">✓ Loaded</span>`;
+                                if (this.images[el.id].autoLoaded) {
+                                    imgBadge = `<span style="color:#00BFFF; float:right; font-weight:bold;">✓ Found</span>`;
+                                } else {
+                                    imgBadge = `<span style="color:#32CD32; float:right; font-weight:bold;">✓ Loaded</span>`;
+                                }
                             }
                             visibleControls += `
                                 <div class="input-group full-width">
@@ -494,71 +673,143 @@
                         }
                     });
 
-                    const mediaSwitches = ['tile', 'showSnapshotNoVideo'];
-                    const activeMediaSwitches = schema.filter(p => mediaSwitches.includes(p));
-                    if (activeMediaSwitches.length > 0 || schema.includes('delay')) {
+                    // --- Boolean / scalar properties grid ---
+                    const boolProps = [
+                        ['tile', 'tile'],
+                        ['esVisible', 'visible (ES property)'],
+                        ['showSnapshotNoVideo', 'showSnapshotNoVideo'],
+                        ['showSnapshotDelay', 'showSnapshotDelay'],
+                        ['selectorImageTile', 'selectorImageTile'],
+                        ['scrollLoop', 'scrollLoop'],
+                        ['animate', 'animate (grid)'],
+                        ['centerSelection', 'centerSelection'],
+                    ];
+                    const activeBools = boolProps.filter(([p]) => schema.includes(p));
+                    const hasDelay = schema.includes('delay');
+                    const hasRotation = schema.includes('rotation');
+                    const hasScrollSound = schema.includes('scrollSound');
+                    const hasSelectorHeight = schema.includes('selectorHeight');
+                    const hasSelectorOffsetY = schema.includes('selectorOffsetY');
+                    const hasSelectorImagePath = schema.includes('selectorImagePath');
+                    const hasDefaultPath = schema.includes('default');
+                    const hasAutoLayoutZoom = schema.includes('autoLayoutSelectedZoom');
+
+                    if (activeBools.length > 0 || hasDelay || hasRotation) {
                         visibleControls += `<div class="grid-2 full-width">`;
-                        if (schema.includes('tile')) {
+                        activeBools.forEach(([prop, label]) => {
                             visibleControls += `
                                 <div class="input-group">
-                                    <label>tile</label>
-                                    <select onchange="app.updateElement('${el.id}', 'tile', this.value)">
-                                        <option value="false" ${el.tile === 'false' || !el.tile ? 'selected' : ''}>False</option>
-                                        <option value="true" ${el.tile === 'true' ? 'selected' : ''}>True</option>
+                                    <label>${label}</label>
+                                    <select onchange="app.updateElement('${el.id}', '${prop}', this.value)">
+                                        <option value="false" ${el[prop] === 'false' || !el[prop] ? 'selected' : ''}>False</option>
+                                        <option value="true" ${el[prop] === 'true' ? 'selected' : ''}>True</option>
                                     </select>
                                 </div>`;
-                        }
-                        if (schema.includes('showSnapshotNoVideo')) {
-                            visibleControls += `
-                                <div class="input-group">
-                                    <label>showSnapshotNoVideo</label>
-                                    <select onchange="app.updateElement('${el.id}', 'showSnapshotNoVideo', this.value)">
-                                        <option value="false" ${el.showSnapshotNoVideo === 'false' || !el.showSnapshotNoVideo ? 'selected' : ''}>False</option>
-                                        <option value="true" ${el.showSnapshotNoVideo === 'true' ? 'selected' : ''}>True</option>
-                                    </select>
-                                </div>`;
-                        }
-                        if (schema.includes('delay')) {
-                            visibleControls += `<div class="input-group"><label>delay (seconds)</label><input type="number" step="0.1" value="${el.delay}" oninput="app.updateElement('${el.id}', 'delay', this.value)"></div>`;
-                        }
+                        });
+                        if (hasDelay) visibleControls += `<div class="input-group"><label>delay (seconds)</label><input type="number" step="0.1" value="${el.delay}" oninput="app.updateElement('${el.id}', 'delay', this.value)"></div>`;
+                        if (hasRotation) visibleControls += `<div class="input-group"><label>rotation (degrees)</label><input type="number" step="1" value="${el.rotation}" oninput="app.updateElement('${el.id}', 'rotation', this.value)"></div>`;
+                        if (hasRotation) visibleControls += `<div class="input-group"><label>rotationOrigin (x y)</label><input type="text" value="${el.rotationOrigin}" placeholder="0.5 0.5" oninput="app.updateElement('${el.id}', 'rotationOrigin', this.value)"></div>`;
                         visibleControls += `</div>`;
                     }
 
+                    // --- default path, scrollSound, selectorImage, selectorHeight ---
+                    if (hasDefaultPath || hasScrollSound || hasSelectorImagePath || hasSelectorHeight || hasSelectorOffsetY) {
+                        visibleControls += `<div class="grid-2 full-width">`;
+                        if (hasDefaultPath) visibleControls += `<div class="input-group full-width"><label>default (fallback path)</label><input type="text" value="${el.default||''}" oninput="app.updateElement('${el.id}', 'default', this.value)"></div>`;
+                        if (hasSelectorImagePath) visibleControls += `<div class="input-group full-width"><label>selectorImagePath</label><input type="text" value="${el.selectorImagePath||''}" oninput="app.updateElement('${el.id}', 'selectorImagePath', this.value)"></div>`;
+                        if (hasSelectorHeight) visibleControls += `<div class="input-group"><label>selectorHeight</label><input type="number" step="0.005" value="${el.selectorHeight||''}" oninput="app.updateElement('${el.id}', 'selectorHeight', this.value)"></div>`;
+                        if (hasSelectorOffsetY) visibleControls += `<div class="input-group"><label>selectorOffsetY</label><input type="number" step="0.005" value="${el.selectorOffsetY||''}" oninput="app.updateElement('${el.id}', 'selectorOffsetY', this.value)"></div>`;
+                        if (hasScrollSound) visibleControls += `<div class="input-group full-width"><label>scrollSound (path)</label><input type="text" value="${el.scrollSound||''}" oninput="app.updateElement('${el.id}', 'scrollSound', this.value)"></div>`;
+                        visibleControls += `</div>`;
+                    }
+
+                    // --- imagegrid specific ---
                     if (el.tag === 'imagegrid') {
                         visibleControls += `
                             <div class="grid-2 full-width">
+                                <div class="input-group"><label>margin (w h)</label><input type="text" value="${el.margin||''}" oninput="app.updateElement('${el.id}', 'margin', this.value)"></div>
+                                <div class="input-group"><label>padding (t l b r)</label><input type="text" value="${el.padding||''}" oninput="app.updateElement('${el.id}', 'padding', this.value)"></div>
+                                <div class="input-group"><label>autoLayout (cols rows)</label><input type="text" value="${el.autoLayout||''}" placeholder="5 3" oninput="app.updateElement('${el.id}', 'autoLayout', this.value)"></div>
+                                <div class="input-group"><label>autoLayoutSelectedZoom</label><input type="number" step="0.1" value="${el.autoLayoutSelectedZoom||''}" oninput="app.updateElement('${el.id}', 'autoLayoutSelectedZoom', this.value)"></div>
                                 <div class="input-group">
-                                    <label>margin (e.g. 0.01 0.02)</label>
-                                    <input type="text" value="${el.margin}" oninput="app.updateElement('${el.id}', 'margin', this.value)">
-                                </div>
-                                <div class="input-group">
-                                    <label>autoLayout (cols rows)</label>
-                                    <input type="text" value="${el.autoLayout}" placeholder="5 3" oninput="app.updateElement('${el.id}', 'autoLayout', this.value)">
+                                    <label>imageSource</label>
+                                    <select onchange="app.updateElement('${el.id}', 'imageSource', this.value)">
+                                        <option value="" ${!el.imageSource ? 'selected' : ''}>(default)</option>
+                                        <option value="image" ${el.imageSource === 'image' ? 'selected' : ''}>image</option>
+                                        <option value="thumbnail" ${el.imageSource === 'thumbnail' ? 'selected' : ''}>thumbnail</option>
+                                        <option value="marquee" ${el.imageSource === 'marquee' ? 'selected' : ''}>marquee</option>
+                                        <option value="screenshot" ${el.imageSource === 'screenshot' ? 'selected' : ''}>screenshot</option>
+                                        <option value="cover" ${el.imageSource === 'cover' ? 'selected' : ''}>cover</option>
+                                    </select>
                                 </div>
                                 <div class="input-group">
                                     <label>scrollDirection</label>
                                     <select onchange="app.updateElement('${el.id}', 'scrollDirection', this.value)">
-                                        <option value="vertical" ${el.scrollDirection === 'vertical' ? 'selected' : ''}>Vertical</option>
+                                        <option value="vertical" ${el.scrollDirection === 'vertical' || !el.scrollDirection ? 'selected' : ''}>Vertical</option>
                                         <option value="horizontal" ${el.scrollDirection === 'horizontal' ? 'selected' : ''}>Horizontal</option>
                                     </select>
                                 </div>
+                                <div class="input-group full-width"><label>gameImage (default path)</label><input type="text" value="${el.gameImage||''}" oninput="app.updateElement('${el.id}', 'gameImage', this.value)"></div>
+                                <div class="input-group full-width"><label>folderImage (default path)</label><input type="text" value="${el.folderImage||''}" oninput="app.updateElement('${el.id}', 'folderImage', this.value)"></div>
+                            </div>`;
+                    }
+
+                    // --- gridtile specific ---
+                    if (el.tag === 'gridtile') {
+                        visibleControls += `
+                            <div class="grid-2 full-width">
+                                <div class="input-group"><label>size (w h)</label><input type="text" value="${el.size ? el.size.join(' ') : ''}" oninput="app.updateElement('${el.id}', 'size', this.value)"></div>
+                                <div class="input-group"><label>padding (w h)</label><input type="text" value="${el.padding||''}" oninput="app.updateElement('${el.id}', 'padding', this.value)"></div>
+                                <div class="input-group"><label>backgroundCornerSize (w h)</label><input type="text" value="${el.backgroundCornerSize||''}" oninput="app.updateElement('${el.id}', 'backgroundCornerSize', this.value)"></div>
+                                <div class="input-group"><label>imageColor</label><input type="text" value="${el.imageColor||''}" oninput="app.updateElement('${el.id}', 'imageColor', this.value)"></div>
+                                <div class="input-group"><label>backgroundColor</label><input type="text" value="${el.backgroundColor||''}" oninput="app.updateElement('${el.id}', 'backgroundColor', this.value)"></div>
+                                <div class="input-group"><label>backgroundCenterColor</label><input type="text" value="${el.backgroundCenterColor||''}" oninput="app.updateElement('${el.id}', 'backgroundCenterColor', this.value)"></div>
+                                <div class="input-group"><label>backgroundEdgeColor</label><input type="text" value="${el.backgroundEdgeColor||''}" oninput="app.updateElement('${el.id}', 'backgroundEdgeColor', this.value)"></div>
+                                <div class="input-group full-width"><label>backgroundImage (path)</label><input type="text" value="${el.backgroundImage||''}" oninput="app.updateElement('${el.id}', 'backgroundImage', this.value)"></div>
+                            </div>`;
+                    }
+
+                    // --- carousel specific ---
+                    if (el.tag === 'carousel') {
+                        visibleControls += `
+                            <div class="grid-2 full-width">
                                 <div class="input-group">
-                                    <label>centerSelection</label>
-                                    <select onchange="app.updateElement('${el.id}', 'centerSelection', this.value)">
-                                        <option value="false" ${el.centerSelection === 'false' || !el.centerSelection ? 'selected' : ''}>False</option>
-                                        <option value="true" ${el.centerSelection === 'true' ? 'selected' : ''}>True</option>
+                                    <label>type</label>
+                                    <select onchange="app.updateElement('${el.id}', 'type', this.value)">
+                                        <option value="horizontal" ${el.type === 'horizontal' || !el.type ? 'selected' : ''}>Horizontal</option>
+                                        <option value="vertical" ${el.type === 'vertical' ? 'selected' : ''}>Vertical</option>
+                                        <option value="horizontal_wheel" ${el.type === 'horizontal_wheel' ? 'selected' : ''}>Horizontal Wheel</option>
+                                        <option value="vertical_wheel" ${el.type === 'vertical_wheel' ? 'selected' : ''}>Vertical Wheel</option>
                                     </select>
                                 </div>
-                            </div>
-                        `;
+                                <div class="input-group"><label>color (RRGGBBAA)</label><input type="text" value="${el.color||''}" oninput="app.updateElement('${el.id}', 'color', this.value)"></div>
+                                <div class="input-group"><label>logoSize (w h)</label><input type="text" value="${el.logoSize||''}" oninput="app.updateElement('${el.id}', 'logoSize', this.value)"></div>
+                                <div class="input-group"><label>logoScale</label><input type="number" step="0.1" value="${el.logoScale||''}" oninput="app.updateElement('${el.id}', 'logoScale', this.value)"></div>
+                                <div class="input-group"><label>logoRotation (degrees)</label><input type="number" step="0.5" value="${el.logoRotation||''}" oninput="app.updateElement('${el.id}', 'logoRotation', this.value)"></div>
+                                <div class="input-group"><label>logoRotationOrigin (x y)</label><input type="text" value="${el.logoRotationOrigin||''}" oninput="app.updateElement('${el.id}', 'logoRotationOrigin', this.value)"></div>
+                                <div class="input-group">
+                                    <label>logoAlignment</label>
+                                    <select onchange="app.updateElement('${el.id}', 'logoAlignment', this.value)">
+                                        <option value="center" ${el.logoAlignment === 'center' || !el.logoAlignment ? 'selected' : ''}>Center</option>
+                                        <option value="top" ${el.logoAlignment === 'top' ? 'selected' : ''}>Top</option>
+                                        <option value="bottom" ${el.logoAlignment === 'bottom' ? 'selected' : ''}>Bottom</option>
+                                        <option value="left" ${el.logoAlignment === 'left' ? 'selected' : ''}>Left</option>
+                                        <option value="right" ${el.logoAlignment === 'right' ? 'selected' : ''}>Right</option>
+                                    </select>
+                                </div>
+                                <div class="input-group"><label>maxLogoCount</label><input type="number" step="1" value="${el.maxLogoCount||''}" oninput="app.updateElement('${el.id}', 'maxLogoCount', this.value)"></div>
+                            </div>`;
                     }
                 }
 
                 let toggleBtn = '';
-                if (el.visible) {
-                    toggleBtn = `<button class="btn-sm" onclick="app.updateElement('${el.id}', 'visible', false); app.renderControls();">Hide</button>`;
-                } else {
-                    toggleBtn = `<button class="btn-sm show" onclick="app.updateElement('${el.id}', 'visible', true); app.renderControls();">Add to View</button>`;
+                const isCarouselManaged = this.currentView === 'system' && (el.name === 'logo' || el.name === 'logoText');
+                if (!isCarouselManaged) {
+                    if (el.visible) {
+                        toggleBtn = `<button class="btn-sm" onclick="app.toggleVisibility('${el.id}', false)">Hide</button>`;
+                    } else {
+                        toggleBtn = `<button class="btn-sm show" onclick="app.toggleVisibility('${el.id}', true)">Add to View</button>`;
+                    }
                 }
 
                 let deleteBtn = '';
@@ -566,7 +817,7 @@
                     deleteBtn = `<button class="btn-sm delete" onclick="app.deleteElement('${el.id}')">Del</button>`;
                 }
 
-                const cardHTML = `
+                allCardsHTML += `
                     <div class="element-card" style="border-left-color: ${el.extra ? '#00FFFF' : '#FF00FF'}; opacity: ${el.visible ? '1' : '0.4'};" id="ctrl-${el.id}">
                         <div class="card-header">
                             <h3>${el.name} <span style="color:#666; font-size:10px;">&lt;${el.tag}&gt;</span></h3>
@@ -574,10 +825,9 @@
                         </div>
                         ${visibleControls}
                     </div>`;
-                    
-                container.innerHTML += cardHTML;
             });
-            
+
+            container.innerHTML = allCardsHTML;
             this.renderMonitor();
         },
 
@@ -635,9 +885,25 @@
 
                 cont.style.zIndex = el.zIndex;
 
-                cont.onclick = (e) => { 
-                    e.stopPropagation(); 
-                    this.scrollToControl(el.id); 
+                // Full-screen overlays (pos 0 0, size 1 1) should never intercept clicks
+                const px = parseFloat(el.pos[0]), py = parseFloat(el.pos[1]);
+                const pw = parseFloat((el.size[0] > 0 ? el.size[0] : el.maxSize[0]) || 0);
+                const ph = parseFloat((el.size[1] > 0 ? el.size[1] : el.maxSize[1]) || 0);
+                if (px <= 0 && py <= 0 && pw >= 0.99 && ph >= 0.99) {
+                    cont.style.pointerEvents = 'none';
+                }
+
+                cont.onclick = (e) => {
+                    e.stopPropagation();
+                    // Drop any previous click elevation
+                    document.querySelectorAll('.es-container.clicked').forEach(c => {
+                        c.classList.remove('clicked');
+                        c.style.zIndex = c._baseZIndex || '';
+                    });
+                    cont._baseZIndex = el.zIndex;
+                    cont.classList.add('clicked');
+                    cont.style.zIndex = 9999;
+                    this.scrollToControl(el.id);
                 };
 
                 if (el.tag === 'imagegrid') {
@@ -796,18 +1062,113 @@
                         media.src = this.images[el.id].url;
                         cont.appendChild(media);
                     } else if (el.path && el.path.trim() !== '') {
-                        media.src = el.path;
-                        media.onerror = function() {
-                            this.style.display = 'none';
-                            cont.style.backgroundColor = el.extra ? 'rgba(0,255,255,0.1)' : 'rgba(255,0,255,0.1)';
-                            cont.innerHTML = `<div style="margin:auto; font-size:10px; color:#aaa; text-align:center;">Missing:<br>${el.path.split('/').pop()}</div>`;
-                        };
-                        cont.appendChild(media);
+                        const resolvedPath = this.resolvePathVars(el.path);
+                        const hasUnresolvedVars = resolvedPath.includes('${');
+                        if (hasUnresolvedVars) {
+                            // Path still has unresolved variables — show informative placeholder
+                            cont.style.backgroundColor = el.extra ? 'rgba(0,255,255,0.08)' : 'rgba(255,165,0,0.12)';
+                            const ext = el.path.split('.').pop().toUpperCase();
+                            const varHint = el.path.match(/\$\{[^}]+\}/g).join(', ');
+                            cont.innerHTML = `<div style="margin:auto; font-size:10px; color:#FFA500; text-align:center; padding:4px;">[${ext}]<br><span style="color:#666; font-size:9px;">${varHint}</span></div>`;
+                        } else {
+                            media.src = resolvedPath;
+                            media.onload = () => {
+                                if (!this.images[el.id]) {
+                                    this.images[el.id] = { url: resolvedPath, name: resolvedPath.split('/').pop(), autoLoaded: true };
+                                    this.renderControls();
+                                }
+                            };
+                            media.onerror = function() {
+                                this.style.display = 'none';
+                                cont.style.backgroundColor = el.extra ? 'rgba(0,255,255,0.1)' : 'rgba(255,0,255,0.1)';
+                                cont.innerHTML = `<div style="margin:auto; font-size:10px; color:#aaa; text-align:center;">Missing:<br>${resolvedPath.split('/').pop()}</div>`;
+                            };
+                            cont.appendChild(media);
+                        }
                     } else {
                         cont.style.backgroundColor = el.extra ? 'rgba(0,255,255,0.1)' : 'rgba(255,0,255,0.1)';
                         cont.innerHTML = `<div style="margin:auto; font-size:12px; color:#aaa;">[${el.name}]</div>`;
                     }
                 } 
+                else if (el.tag === 'carousel') {
+                    // Carousel gets its own positioning defaults if not set in XML
+                    const cPosX = parseFloat(el.pos[0]) || 0;
+                    const cPosY = parseFloat(el.pos[1]) || 0.38375;
+                    const cW    = parseFloat(el.size[0]) || 1;
+                    const cH    = parseFloat(el.size[1]) || 0.2325;
+
+                    cont.style.left   = `${cPosX * 100}%`;
+                    cont.style.top    = `${cPosY * 100}%`;
+                    cont.style.width  = `${cW * 100}%`;
+                    cont.style.height = `${cH * 100}%`;
+                    cont.style.transform = '';
+
+                    const bgColor = el.color ? this.parseVariableColor(el.color) : 'rgba(255,255,255,0.85)';
+                    cont.style.backgroundColor = bgColor;
+                    cont.style.display = 'flex';
+                    cont.style.alignItems = 'center';
+                    cont.style.justifyContent = 'center';
+                    cont.style.overflow = 'hidden';
+
+                    const count     = parseInt(el.maxLogoCount) || 3;
+                    const scale     = parseFloat(el.logoScale) || 1.2;
+                    const logoW     = parseFloat(el.logoSize ? el.logoSize[0] : 0) || 0.25;
+                    const logoH     = parseFloat(el.logoSize ? el.logoSize[1] : 0) || 0.155;
+                    const alignment = el.logoAlignment || 'center';
+
+                    // Find logo and logoText elements in the system view data
+                    const logoEl     = this.data['system'].find(e => e.name === 'logo');
+                    const logoTextEl = this.data['system'].find(e => e.name === 'logoText');
+
+                    for (let i = 0; i < count; i++) {
+                        const isSelected = (i === Math.floor(count / 2));
+                        const slot = document.createElement('div');
+                        slot.style.cssText = `
+                            display: flex;
+                            align-items: ${alignment === 'top' ? 'flex-start' : alignment === 'bottom' ? 'flex-end' : 'center'};
+                            justify-content: center;
+                            flex-shrink: 0;
+                            width: ${logoW * 100}%;
+                            height: ${logoH * 100 / (cH)}%;
+                            transition: transform 0.2s;
+                            transform: scale(${isSelected ? scale : 1});
+                            opacity: ${isSelected ? '1' : '0.5'};
+                            overflow: hidden;
+                            box-sizing: border-box;
+                        `;
+
+                        // Try to show logo image, fall back to logoText
+                        const logoImgSrc = logoEl && this.images[logoEl.id] ? this.images[logoEl.id].url
+                            : (logoEl && logoEl.path && !logoEl.path.includes('\${') ? this.resolvePathVars(logoEl.path) : null);
+
+                        if (logoImgSrc) {
+                            const img = document.createElement('img');
+                            img.src = logoImgSrc;
+                            img.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain; pointer-events:none;';
+                            if (logoEl && logoEl.color) {
+                                img.style.filter = `opacity(1)`;  // color tinting not trivially possible in CSS
+                            }
+                            slot.appendChild(img);
+                        } else {
+                            // Fallback to logoText
+                            const ltxt = document.createElement('div');
+                            const ltColor = logoTextEl && logoTextEl.color ? this.parseVariableColor(logoTextEl.color) : '#000';
+                            ltxt.style.cssText = `color:${ltColor}; font-size:${parseFloat(logoTextEl && logoTextEl.fontSize || '0.05') * 100}cqh; text-align:center; padding:4px; pointer-events:none; overflow:hidden;`;
+                            if (logoTextEl && logoTextEl.forceUppercase === 'true') ltxt.style.textTransform = 'uppercase';
+                            if (logoTextEl && logoTextEl.fontPath && this.fonts[logoTextEl.fontPath.toLowerCase()]) {
+                                ltxt.style.fontFamily = `'${this.fonts[logoTextEl.fontPath.toLowerCase()].name}', sans-serif`;
+                            }
+                            ltxt.innerText = logoTextEl && logoTextEl.text ? logoTextEl.text : '[System Name]';
+                            slot.appendChild(ltxt);
+                        }
+
+                        cont.appendChild(slot);
+                    }
+
+                    monitor.appendChild(cont);
+                    return;
+                }
+
                 else if (el.tag === 'text' || el.tag === 'datetime') {
                     const txt = document.createElement('div');
                     txt.className = 'es-content-txt';
@@ -833,9 +1194,27 @@
                             const autoName = `auto_${lookupPath.replace(/[^a-zA-Z0-9]/g, '')}`;
                             if (!this.autoFonts[lookupPath]) {
                                 this.autoFonts[lookupPath] = autoName;
-                                const style = document.createElement('style');
-                                style.innerHTML = `@font-face { font-family: '${autoName}'; src: url('${el.fontPath}'); }`;
-                                document.head.appendChild(style);
+                                // Use FontFace API directly — works on file:// unlike fetch().
+                                // Each font gets its own promise so a bad path can't poison others.
+                                const face = new FontFace(autoName, `url('${el.fontPath}')`);
+                                face.load().then(loaded => {
+                                    document.fonts.add(loaded);
+                                    if (!this.fonts[lookupPath]) {
+                                        this.fonts[lookupPath] = { name: autoName, fileName: el.fontPath.split('/').pop(), autoLoaded: true };
+                                        // Warn if another path already loaded a font with the same filename
+                                        const fileName = el.fontPath.split('/').pop().toLowerCase();
+                                        const conflict = Object.entries(this.fonts).find(([k, v]) =>
+                                            k !== lookupPath && v.fileName.toLowerCase() === fileName
+                                        );
+                                        if (conflict) {
+                                            console.warn(`Font filename conflict: "${el.fontPath}" and "${conflict[1].fileName}" resolve to the same file but use different paths. Check your XML for inconsistent fontPath values.`);
+                                            this.showWarning(`Font path inconsistency detected: "${el.fontPath.split('/').pop()}" is referenced from multiple different paths in your XML. This may cause missing fonts. Check the browser console for details.`);
+                                        }
+                                        this.renderControls();
+                                    }
+                                }).catch(() => {
+                                    // Font file not found at this path — silent, falls back to monospace
+                                });
                             }
                             txt.style.fontFamily = `'${autoName}', monospace`;
                         }
@@ -848,23 +1227,43 @@
             });
         },
 
+        showWarning: function(msg) {
+            let banner = document.getElementById('warning-banner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.id = 'warning-banner';
+                banner.style.cssText = 'position:fixed; top:0; left:0; right:0; background:#8B4513; color:#FFD700; padding:8px 12px; font-size:12px; z-index:9999; display:flex; justify-content:space-between; align-items:center;';
+                document.body.prepend(banner);
+            }
+            const msgs = banner._msgs || (banner._msgs = new Set());
+            if (msgs.has(msg)) return;
+            msgs.add(msg);
+            const text = document.createElement('span');
+            text.textContent = `⚠ ${msg}`;
+            const close = document.createElement('button');
+            close.textContent = '✕';
+            close.style.cssText = 'background:none; border:none; color:#FFD700; cursor:pointer; font-size:14px; margin-left:12px;';
+            close.onclick = () => banner.remove();
+            banner.appendChild(text);
+            banner.appendChild(close);
+        },
+
+        tryAutoLoadAssets: async function() {
+            // Images are detected via onload in renderMonitor (works on file://).
+            // Fonts: @font-face injection + document.fonts.ready check also happens
+            // in renderMonitor. This method is retained for any future HTTP-served
+            // use but is now a no-op; the real work happens during render.
+        },
+
         processRawXML: function(raw) {
             if (!raw.trim()) {
                 alert("No XML found to parse.");
                 return;
             }
             
-            let parts = raw.split('\x3C!--');
-            raw = parts[0] + parts.slice(1).map(p => {
-                let end = p.indexOf('--\x3E');
-                if (end !== -1) {
-                    return p.substring(end + 3);
-                } else {
-                    return p;
-                }
-            }).join('');
-            
-            raw = raw.replace(new RegExp("&(?!amp;|lt;|gt;|quot;|apos;)", "g"), "&amp;");
+            raw = raw.replace(/<\?xml[\s\S]*?\?>/gi, '');
+            raw = raw.replace(/<!--[\s\S]*?-->/g, '');
+            raw = raw.replace(/&(?!amp;|lt;|gt;|quot;|apos;)/g, "&amp;");
             
             try {
                 const doc = new DOMParser().parseFromString(`<root>${raw}</root>`, "text/xml");
@@ -932,7 +1331,10 @@
                                     schema.forEach(prop => {
                                         const node = child.querySelector(prop);
                                         if (node) {
-                                            if (ARRAY_PROPS.includes(prop)) {
+                                            if (prop === 'esVisible') {
+                                                // Store ES visible property separately from studio toggle
+                                                targetEl.esVisible = node.textContent.trim();
+                                            } else if (ARRAY_PROPS.includes(prop)) {
                                                 const vals = node.textContent.trim().split(/\s+/);
                                                 const val0 = vals[0] ? vals[0] : '0';
                                                 const val1 = vals[1] ? vals[1] : '0';
@@ -948,8 +1350,6 @@
                     });
                 });
                 
-                alert("XML File Successfully Parsed with Strict Schema!");
-                
                 const firstViewNames = viewNodes[0].getAttribute('name').split(',');
                 const firstFound = firstViewNames[0].trim();
                 
@@ -958,6 +1358,12 @@
                 } else {
                     this.renderControls();
                 }
+
+                this.tryAutoLoadAssets().then(() => {
+                    this.renderControls();
+                    this.renderMonitor();
+                    alert("XML File Successfully Parsed with Strict Schema!");
+                });
                 
             } catch (e) { 
                 alert("XML Parse Error: \n\n" + e.message + "\n\nPlease check your XML for syntax typos."); 
@@ -985,7 +1391,13 @@
                         props = { pos: '2 2' };
                     } else {
                         schema.forEach(prop => {
-                            if (ARRAY_PROPS.includes(prop)) {
+                            if (prop === 'esVisible') {
+                                // Only emit <visible> when explicitly set to false — true is ES default
+                                const v = el[prop];
+                                if (v === 'false' || v === '0') {
+                                    props['visible'] = 'false';
+                                }
+                            } else if (ARRAY_PROPS.includes(prop)) {
                                 const v0 = parseFloat(el[prop][0]);
                                 const v1 = parseFloat(el[prop][1]);
                                 if (prop === 'pos' || v0 !== 0 || v1 !== 0) {
@@ -1173,7 +1585,7 @@
         },
 
         exportFullThemeXML: function() {
-            let fullOut = `\x3C!-- Compiled by ES Theme Studio v3.2 --\x3E\n<theme>\n    <formatVersion>4</formatVersion>\n\n`;
+            let fullOut = `\x3C!-- Compiled by ES Theme Studio v3.40 --\x3E\n<theme>\n    <formatVersion>4</formatVersion>\n\n`;
             
             if (Object.keys(this.variables).length > 0) {
                 fullOut += `    <variables>\n`;
