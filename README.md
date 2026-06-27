@@ -1,5 +1,5 @@
 # ES Theme Studio v3.57
-
+# DISCLOSURE: This was created with the help of AI
 A single-file, browser-based visual editor for EmulationStation theme XML files. Designed to run locally alongside your theme files — no server required.
 
 ---
