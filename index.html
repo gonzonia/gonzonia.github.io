@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ES Theme Studio v3.44 (Deep Compiler)</title>
+    <title>ES Theme Studio v3.57 (Deep Compiler)</title>
     <style>
         :root { --bg: #1a0b2e; --panel: #111; --border: #FF00FF; --text: #00FFFF; }
         body { margin: 0; padding: 0; background: var(--bg); color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; height: 100vh; overflow: hidden; }
@@ -54,8 +54,13 @@
         
         .highlight-card { background: #002233 !important; border-left-color: #00FFFF !important; box-shadow: 0 0 20px rgba(0, 255, 255, 0.5) !important; transform: scale(1.02); transition: all 0.3s ease; z-index: 10; position: relative; }
 
+        /* Drag styles */
+        .es-container.dragging { outline: 2px solid #FF0000 !important; cursor: grabbing !important; z-index: 9998 !important; }
+        .es-container:not([style*="pointer-events: none"]) { cursor: grab; }
+        #drag-tooltip { position: fixed; background: rgba(0,0,0,0.85); color: #00FFFF; font-size: 11px; font-family: monospace; padding: 4px 8px; border-radius: 3px; pointer-events: none; z-index: 99999; display: none; white-space: nowrap; border: 1px solid #00FFFF; }
+
         /* System Variable Modal */
-        #sysvar-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center; }
+        #sysvar-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:10000; justify-content:center; align-items:center; }
         #sysvar-modal.open { display:flex; }
         #sysvar-dialog { background:#0a0414; border:2px solid #FF00FF; border-radius:6px; padding:24px; width:420px; box-shadow:0 0 40px rgba(255,0,255,0.3); }
         #sysvar-dialog h3 { margin:0 0 6px 0; color:#FF00FF; text-transform:uppercase; font-size:14px; }
@@ -71,9 +76,10 @@
 <body>
 
 <button id="sidebar-toggle" onclick="app.toggleSidebar()" title="Toggle Sidebar">&#9664;</button>
+<div id="drag-tooltip"></div>
 
 <div id="sidebar">
-    <div class="header"><h2>ES Theme Studio v3.44</h2></div>
+    <div class="header"><h2>ES Theme Studio v3.57</h2></div>
     <div class="actions" style="border-bottom: 1px solid #333; border-top: none;">
         
         <div id="drop-zone" onclick="document.getElementById('file-input').click()">
@@ -163,16 +169,21 @@
     
     // Properties eligible for automatic cross-view cluster compression
     const GROUPABLE_PROPS = [
+        // Styling props
         'color', 'fontSize', 'alignment', 'fontPath', 'lineSpacing', 'forceUppercase',
         'backgroundColor', 'textColor', 'iconColor', 'primaryColor', 'secondaryColor',
         'selectorColor', 'selectedColor', 'horizontalMargin', 'format', 'displayRelative',
         'esVisible', 'rotation', 'tile', 'scrollDirection', 'centerSelection', 'scrollLoop',
         'animate', 'imageSource', 'type', 'logoAlignment', 'logoScale', 'logoRotation',
-        'maxLogoCount', 'showSnapshotNoVideo', 'showSnapshotDelay', 'displayRelative',
-        'selectorImageTile', 'autoLayoutSelectedZoom'
+        'maxLogoCount', 'showSnapshotNoVideo', 'showSnapshotDelay',
+        'selectorImageTile', 'autoLayoutSelectedZoom',
+        // Positional props — excluded from within-view grouping but included in cross-view grouping
+        'pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'rotationOrigin',
+        'logoSize', 'logoRotationOrigin', 'delay', 'margin', 'padding',
+        'filledPath', 'unfilledPath', 'selectorImagePath', 'backgroundImage',
     ];
 
-    const app = {
+    const app = window.app = {
         currentView: 'detailed',
         views: ['system', 'basic', 'detailed', 'video', 'grid'],
         data: {},
@@ -410,6 +421,11 @@
         },
 
         openSysVarModal: function() {
+            // Clear any click-elevated monitor elements so they don't sit above the modal
+            document.querySelectorAll('.es-container.clicked').forEach(c => {
+                c.classList.remove('clicked');
+                c.style.zIndex = c._baseZIndex || '';
+            });
             document.getElementById('sysvar-name').value = this.systemVars['system.name'];
             document.getElementById('sysvar-fullname').value = this.systemVars['system.fullName'];
             document.getElementById('sysvar-theme').value = this.systemVars['system.theme'];
@@ -426,11 +442,19 @@
                 'system.theme':    document.getElementById('sysvar-theme').value.trim(),
             };
 
-            // Only re-render if values changed AND XML has been loaded with variable paths
             const changed = Object.keys(newVars).some(k => newVars[k] !== this.systemVars[k]);
             this.systemVars = newVars;
 
             if (changed && this.hasVariablePaths()) {
+                // Clear cached images for any element whose path contains a system variable,
+                // across all views — so switching views later picks up the new resolved path
+                this.views.forEach(v => {
+                    this.data[v].forEach(el => {
+                        if (el.path && el.path.includes('${system.') && this.images[el.id] && this.images[el.id].autoLoaded) {
+                            delete this.images[el.id];
+                        }
+                    });
+                });
                 this.renderMonitor();
             }
         },
@@ -555,8 +579,8 @@
                     if (schema.some(p => ARRAY_PROPS.includes(p))) {
                         visibleControls += `<div class="grid-4">`;
                         if (schema.includes('pos')) {
-                            visibleControls += `<div class="input-group"><label>pos X</label><input type="number" step="0.005" value="${el.pos[0]}" oninput="app.updateElement('${el.id}', 'pos', this.value, 0)"></div>`;
-                            visibleControls += `<div class="input-group"><label>pos Y</label><input type="number" step="0.005" value="${el.pos[1]}" oninput="app.updateElement('${el.id}', 'pos', this.value, 1)"></div>`;
+                            visibleControls += `<div class="input-group"><label>pos X</label><input type="number" step="0.005" value="${el.pos[0]}" data-prop="pos" oninput="app.updateElement('${el.id}', 'pos', this.value, 0)"></div>`;
+                            visibleControls += `<div class="input-group"><label>pos Y</label><input type="number" step="0.005" value="${el.pos[1]}" data-prop="pos" oninput="app.updateElement('${el.id}', 'pos', this.value, 1)"></div>`;
                         }
                         if (schema.includes('size')) {
                             visibleControls += `<div class="input-group"><label>size W</label><input type="number" step="0.005" value="${el.size[0]}" oninput="app.updateElement('${el.id}', 'size', this.value, 0)"></div>`;
@@ -934,9 +958,15 @@
                     cont.style.pointerEvents = 'none';
                 }
 
+                // Skip drag setup for pointer-events:none elements
+                const isOverlay = px <= 0 && py <= 0 && pw >= 0.99 && ph >= 0.99;
+                if (!isOverlay) {
+                    this.setupDrag(cont, el, monitor);
+                }
+
                 cont.onclick = (e) => {
                     e.stopPropagation();
-                    // Drop any previous click elevation
+                    if (cont._wasDragged) { cont._wasDragged = false; return; }
                     document.querySelectorAll('.es-container.clicked').forEach(c => {
                         c.classList.remove('clicked');
                         c.style.zIndex = c._baseZIndex || '';
@@ -1263,6 +1293,100 @@
             });
         },
 
+        setupDrag: function(cont, el, monitor) {
+            const tooltip = document.getElementById('drag-tooltip');
+
+            cont.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+
+                const monRect = monitor.getBoundingClientRect();
+                const originX = parseFloat(el.origin[0]) || 0;
+                const originY = parseFloat(el.origin[1]) || 0;
+
+                // Current pos as fractions
+                let posX = parseFloat(el.pos[0]) || 0;
+                let posY = parseFloat(el.pos[1]) || 0;
+
+                // Offset from cursor to the pos point (origin point) in monitor-fraction space
+                // pos is where the origin sits, so we subtract from cursor's fraction position
+                const cursorFracX = (e.clientX - monRect.left) / monRect.width;
+                const cursorFracY = (e.clientY - monRect.top)  / monRect.height;
+                const offsetX = cursorFracX - posX;
+                const offsetY = cursorFracY - posY;
+
+                cont._wasDragged = false;
+                cont.classList.add('dragging');
+                cont.style.zIndex = 9998;
+
+                const onMove = (me) => {
+                    cont._wasDragged = true;
+
+                    // Cursor position in monitor-fraction space
+                    const cursorFracX = (me.clientX - monRect.left) / monRect.width;
+                    const cursorFracY = (me.clientY - monRect.top)  / monRect.height;
+
+                    // New pos = cursor position minus the offset from origin point to cursor at drag start
+                    let newX = cursorFracX - offsetX;
+                    let newY = cursorFracY - offsetY;
+
+                    // Snapping
+                    if (me.shiftKey) {
+                        newX = Math.round(newX * 100) / 100;
+                        newY = Math.round(newY * 100) / 100;
+                    } else {
+                        newX = Math.round(newX * 1920) / 1920;
+                        newY = Math.round(newY * 1080) / 1080;
+                    }
+
+                    posX = newX;
+                    posY = newY;
+
+                    // Update element data
+                    el.pos = [posX.toFixed(4), posY.toFixed(4)];
+
+                    // Update visual position — left/top is pos, transform handles origin offset
+                    cont.style.left = (posX * 100) + '%';
+                    cont.style.top  = (posY * 100) + '%';
+
+                    // Update tooltip
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (me.clientX + 14) + 'px';
+                    tooltip.style.top  = (me.clientY - 24) + 'px';
+                    const snapMode = me.shiftKey ? ' [grid]' : ' [px]';
+                    tooltip.textContent = `pos: ${posX.toFixed(3)} ${posY.toFixed(3)}${snapMode}`;
+
+                    // Update sidebar pos inputs in real time
+                    const card = document.getElementById('ctrl-' + el.id);
+                    if (card) {
+                        const inputs = card.querySelectorAll('input[data-prop="pos"]');
+                        if (inputs.length >= 2) {
+                            inputs[0].value = posX.toFixed(4);
+                            inputs[1].value = posY.toFixed(4);
+                        }
+                    }
+                };
+
+                const onUp = () => {
+                    cont.classList.remove('dragging');
+                    tooltip.style.display = 'none';
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+
+                    if (cont._wasDragged) {
+                        // el.pos is already updated as an array during drag — just re-render
+                        this.renderMonitor();
+                        this.renderControls();
+                        this.scrollToControl(el.id);
+                    }
+                };
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        },
+
         makeLogoText: function(logoTextEl) {
             const ltxt = document.createElement('div');
             const ltColor = logoTextEl && logoTextEl.color ? this.parseVariableColor(logoTextEl.color) : '#000';
@@ -1343,69 +1467,69 @@
                     });
                 });
 
-                viewNodes.forEach(viewNode => {
+                // Collect all view nodes, including those inside <feature> wrappers
+                const allViewNodes = Array.from(doc.querySelectorAll('view'));
+
+                // Helper to process a single element child node against a view
+                const processChild = (child, viewTarget) => {
+                    if (!child.tagName || !child.getAttribute('name')) return;
+                    const schema = ES_SCHEMA[child.tagName];
+                    if (!schema) return;
+
+                    const childNamesStr = child.getAttribute('name');
+                    const childNames = childNamesStr.split(',').map(n => n.trim());
+                    const isExtra = child.getAttribute('extra') === 'true';
+
+                    childNames.forEach(name => {
+                        let targetEl = this.data[viewTarget].find(e => e.name === name && e.tag === child.tagName);
+
+                        if (!targetEl) {
+                            targetEl = this.createElement(child.tagName, name, isExtra, true);
+                            this.data[viewTarget].push(targetEl);
+                        } else {
+                            // Update extra flag in case it changed
+                            if (isExtra) targetEl.extra = true;
+                        }
+
+                        targetEl.visible = true;
+
+                        schema.forEach(prop => {
+                            const node = child.querySelector(prop);
+                            if (node) {
+                                if (prop === 'esVisible') {
+                                    targetEl.esVisible = node.textContent.trim();
+                                } else if (ARRAY_PROPS.includes(prop)) {
+                                    const vals = node.textContent.trim().split(/\s+/);
+                                    targetEl[prop] = [vals[0] || '0', vals[1] || '0'];
+                                } else {
+                                    targetEl[prop] = node.textContent.trim();
+                                    if (prop === 'text' && MD_LBL_DEFAULTS[targetEl.name] !== undefined) {
+                                        targetEl.exportText = true;
+                                    }
+                                }
+                            }
+                        });
+                    });
+                };
+
+                allViewNodes.forEach(viewNode => {
                     const viewNamesStr = viewNode.getAttribute('name');
                     const viewTargets = viewNamesStr.split(',').map(s => s.trim());
-                    
-                    viewTargets.forEach(viewTarget => {
-                        if (this.views.includes(viewTarget)) {
-                            Array.from(viewNode.children).forEach(child => {
-                                if (!child.tagName || !child.getAttribute('name')) {
-                                    return;
-                                }
-                                
-                                const schema = ES_SCHEMA[child.tagName];
-                                if (!schema) return; 
-                                
-                                const childNamesStr = child.getAttribute('name');
-                                const childNames = childNamesStr.split(',').map(n => n.trim());
-                                
-                                childNames.forEach(name => {
-                                    let targetEl = this.data[viewTarget].find(e => {
-                                        return e.name === name;
-                                    });
-                                    
-                                    if (!targetEl) {
-                                        let isExtra = false;
-                                        if (child.getAttribute('extra') === 'true') {
-                                            isExtra = true;
-                                        }
-                                        targetEl = this.createElement(child.tagName, name, isExtra, true);
-                                        this.data[viewTarget].push(targetEl);
-                                    }
-                                    
-                                    targetEl.visible = true;
 
-                                    schema.forEach(prop => {
-                                        const node = child.querySelector(prop);
-                                        if (node) {
-                                            if (prop === 'esVisible') {
-                                                // Store ES visible property separately from studio toggle
-                                                targetEl.esVisible = node.textContent.trim();
-                                            } else if (ARRAY_PROPS.includes(prop)) {
-                                                const vals = node.textContent.trim().split(/\s+/);
-                                                const val0 = vals[0] ? vals[0] : '0';
-                                                const val1 = vals[1] ? vals[1] : '0';
-                                                targetEl[prop] = [val0, val1];
-                                            } else {
-                                                targetEl[prop] = node.textContent.trim();
-                                                // If an md_lbl element has an explicit <text> in XML, mark it for export
-                                                if (prop === 'text' && MD_LBL_DEFAULTS[targetEl.name] !== undefined) {
-                                                    targetEl.exportText = true;
-                                                }
-                                            }
-                                        }
-                                    });
-                                });
-                            });
-                        }
+                    viewTargets.forEach(viewTarget => {
+                        if (!this.views.includes(viewTarget)) return;
+                        Array.from(viewNode.children).forEach(child => processChild(child, viewTarget));
                     });
                 });
                 
-                const firstViewNames = viewNodes[0].getAttribute('name').split(',');
-                const firstFound = firstViewNames[0].trim();
-                
-                if (this.views.includes(firstFound)) {
+                // Find the first known view from all view nodes (including inside <feature>)
+                const allFoundViews = Array.from(doc.querySelectorAll('view'))
+                    .map(n => n.getAttribute('name').split(',').map(s => s.trim()))
+                    .flat()
+                    .filter(n => this.views.includes(n));
+                const firstFound = allFoundViews[0] || null;
+
+                if (firstFound) {
                     this.switchView(firstFound);
                 } else {
                     this.renderControls();
@@ -1438,8 +1562,8 @@
                     
                     let props = {};
                     
-                    // Pre-compress graveyard coordinates
-                    if (parseFloat(el.pos[0]) >= 1 || parseFloat(el.pos[1]) >= 1) {
+                    // Pre-compress graveyard coordinates (must be strictly greater than 1)
+                    if (parseFloat(el.pos[0]) > 1 || parseFloat(el.pos[1]) > 1) {
                         props = { pos: '2 2' };
                     } else {
                         schema.forEach(prop => {
@@ -1457,8 +1581,12 @@
                                 }
                             } else {
                                 if (el[prop] !== undefined && el[prop] !== '') {
-                                    // Skip <text> for md_lbl elements unless user opted in
+                                    // Skip <text> if it's an md_lbl element without custom text opted in
                                     if (prop === 'text' && MD_LBL_DEFAULTS[el.name] !== undefined && !el.exportText) {
+                                        return;
+                                    }
+                                    // Skip <text> if it's the auto-generated dummy placeholder
+                                    if (prop === 'text' && el[prop] === `[${el.name}]`) {
                                         return;
                                     }
                                     props[prop] = el[prop];
@@ -1473,27 +1601,26 @@
                 });
             });
 
-            const OutputBlocks = {}; 
+            const OutputBlocks = {};
             const addBlock = (viewStr, tag, names, props, extra) => {
                 if (!OutputBlocks[viewStr]) OutputBlocks[viewStr] = [];
                 OutputBlocks[viewStr].push({ tag, names, props, extra });
             };
 
-            // 2. Extract Shared Styling Clusters Across Views
-            const StyleMap = {}; 
+            // 2a. Cross-view compression — runs FIRST so shared blocks across views
+            //     are identified before within-view grouping consumes the data.
+            const StyleMap = {};
             viewsToCompile.forEach(v => {
                 for (const name in ExportData[v]) {
                     const el = ExportData[v][name];
                     let gProps = {};
                     let hasGProps = false;
-                    
                     GROUPABLE_PROPS.forEach(gp => {
                         if (el.props[gp] !== undefined) {
                             gProps[gp] = el.props[gp];
                             hasGProps = true;
                         }
                     });
-                    
                     if (hasGProps) {
                         const json = JSON.stringify(gProps);
                         if (!StyleMap[el.tag]) StyleMap[el.tag] = {};
@@ -1513,20 +1640,21 @@
                         if (!viewComboMap[viewStr]) viewComboMap[viewStr] = [];
                         viewComboMap[viewStr].push(name);
                     }
-
                     for (const viewStr in viewComboMap) {
                         const names = viewComboMap[viewStr].sort();
                         const views = viewStr.split(', ');
-                        
-                        // Extract if multiple elements or multiple views share this exact style signature
+                        // Extract if multiple elements OR multiple views share this exact property signature
                         if (names.length > 1 || views.length > 1) {
                             const props = JSON.parse(json);
-                            addBlock(viewStr, tag, names, props, false);
-                            
+                            // Preserve extra flag — check any view that has this element
+                            const isExtra = names.some(n => views.some(v => ExportData[v][n] && ExportData[v][n].extra));
+                            addBlock(viewStr, tag, names, props, isExtra);
                             views.forEach(v => {
                                 names.forEach(n => {
-                                    for (const p in props) {
-                                        delete ExportData[v][n].props[p];
+                                    if (ExportData[v][n]) {
+                                        for (const p in props) {
+                                            delete ExportData[v][n].props[p];
+                                        }
                                     }
                                 });
                             });
@@ -1535,7 +1663,89 @@
                 }
             }
 
-            // 3. Extract Remaining Identical Element Properties (Coordinates, Paths, etc)
+            // 2b. Within-view greedy grouper — runs AFTER cross-view so it only handles
+            //     properties that weren't already covered by a cross-view block.
+            //     Positional props are excluded from within-view grouping.
+            const POSITIONAL_PROPS = new Set(['pos', 'size', 'maxSize', 'origin', 'zIndex',
+                'rotationOrigin', 'logoSize', 'logoRotationOrigin']);
+
+            viewsToCompile.forEach(v => {
+                const byTag = {};
+                for (const name in ExportData[v]) {
+                    const el = ExportData[v][name];
+                    if (Object.keys(el.props).length === 0) continue;
+                    if (!byTag[el.tag]) byTag[el.tag] = [];
+                    byTag[el.tag].push(name);
+                }
+
+                for (const tag in byTag) {
+                    const names = byTag[tag];
+                    if (names.length < 2) continue;
+
+                    const propValMap = {};
+                    names.forEach(name => {
+                        const props = ExportData[v][name] ? ExportData[v][name].props : {};
+                        for (const prop in props) {
+                            if (POSITIONAL_PROPS.has(prop)) continue;
+                            const val = props[prop];
+                            if (!propValMap[prop]) propValMap[prop] = {};
+                            if (!propValMap[prop][val]) propValMap[prop][val] = new Set();
+                            propValMap[prop][val].add(name);
+                        }
+                    });
+
+                    const writtenProps = {};
+                    names.forEach(n => { writtenProps[n] = new Set(); });
+
+                    let changed = true;
+                    while (changed) {
+                        changed = false;
+                        let bestGroup = null;
+                        let bestProps = null;
+                        let bestScore = 0;
+
+                        for (const prop in propValMap) {
+                            for (const val in propValMap[prop]) {
+                                const candidates = Array.from(propValMap[prop][val])
+                                    .filter(n => ExportData[v][n] && !writtenProps[n].has(prop));
+                                if (candidates.length < 2) continue;
+
+                                const sharedProps = {};
+                                const firstProps = ExportData[v][candidates[0]].props;
+                                for (const p in firstProps) {
+                                    if (POSITIONAL_PROPS.has(p)) continue;
+                                    if (writtenProps[candidates[0]].has(p)) continue;
+                                    const pVal = firstProps[p];
+                                    if (candidates.every(n => ExportData[v][n] && ExportData[v][n].props[p] === pVal && !writtenProps[n].has(p))) {
+                                        sharedProps[p] = pVal;
+                                    }
+                                }
+
+                                const score = candidates.length * Object.keys(sharedProps).length;
+                                if (score > bestScore && Object.keys(sharedProps).length >= 1 && candidates.length >= 2) {
+                                    bestScore = score;
+                                    bestGroup = candidates;
+                                    bestProps = sharedProps;
+                                }
+                            }
+                        }
+
+                        if (bestGroup && bestProps && Object.keys(bestProps).length > 0) {
+                            const isExtra = bestGroup.some(n => ExportData[v][n] && ExportData[v][n].extra);
+                            addBlock(v, tag, bestGroup.slice().sort(), bestProps, isExtra);
+                            bestGroup.forEach(n => {
+                                for (const p in bestProps) {
+                                    writtenProps[n].add(p);
+                                    if (ExportData[v][n]) delete ExportData[v][n].props[p];
+                                }
+                            });
+                            changed = true;
+                        }
+                    }
+                }
+            });
+
+            // 3. Extract Remaining Identical Element Properties Across Views (Coordinates, Paths, etc)
             const RemainingMap = {}; 
             viewsToCompile.forEach(v => {
                 for (const name in ExportData[v]) {
@@ -1588,28 +1798,43 @@
             viewCombos.forEach(viewStr => {
                 out += `    <view name="${viewStr}">\n\n`;
                 
+                const STYLE_PROPS = new Set([
+                    'color', 'fontSize', 'alignment', 'fontPath', 'lineSpacing', 'forceUppercase',
+                    'backgroundColor', 'textColor', 'iconColor', 'primaryColor', 'secondaryColor',
+                    'selectorColor', 'selectedColor', 'tile', 'esVisible', 'rotation',
+                    'scrollDirection', 'centerSelection', 'imageSource', 'type'
+                ]);
                 const blocks = OutputBlocks[viewStr].sort((a, b) => {
-                    const aIsStyle = Object.keys(a.props).some(p => GROUPABLE_PROPS.includes(p)) && !Object.keys(a.props).includes('pos');
-                    const bIsStyle = Object.keys(b.props).some(p => GROUPABLE_PROPS.includes(p)) && !Object.keys(b.props).includes('pos');
-                    const aIsGrave = a.props.pos === '2 2';
-                    const bIsGrave = b.props.pos === '2 2';
-                    
+                    const aKeys = Object.keys(a.props);
+                    const bKeys = Object.keys(b.props);
+                    const aIsStyle = aKeys.some(p => STYLE_PROPS.has(p));
+                    const bIsStyle = bKeys.some(p => STYLE_PROPS.has(p));
+                    const aIsGrave = a.props.pos === '2 2' && aKeys.length === 1;
+                    const bIsGrave = b.props.pos === '2 2' && bKeys.length === 1;
+                    const aIsGroup = a.names.length > 1;
+                    const bIsGroup = b.names.length > 1;
+
                     if (aIsGrave && !bIsGrave) return 1;
                     if (!aIsGrave && bIsGrave) return -1;
-                    if (aIsStyle && !bIsStyle) return -1;
-                    if (!aIsStyle && bIsStyle) return 1;
-                    
+                    // Style groups first, then positional groups, then individuals
+                    if (aIsStyle && aIsGroup && !(bIsStyle && bIsGroup)) return -1;
+                    if (!(aIsStyle && aIsGroup) && (bIsStyle && bIsGroup)) return 1;
+                    if (aIsGroup && !bIsGroup) return -1;
+                    if (!aIsGroup && bIsGroup) return 1;
+
                     return a.tag.localeCompare(b.tag);
                 });
 
                 let currentSection = '';
 
                 blocks.forEach(block => {
-                    const isStyle = Object.keys(block.props).some(p => GROUPABLE_PROPS.includes(p)) && !Object.keys(block.props).includes('pos');
                     const isGrave = block.props.pos === '2 2' && Object.keys(block.props).length === 1;
                     
+                    const blockKeys = Object.keys(block.props);
+                    const blockHasStyle = blockKeys.some(p => STYLE_PROPS.has(p));
                     let sectionLabel = 'INDIVIDUAL ELEMENTS / ASSETS';
-                    if (isStyle) sectionLabel = 'SHARED PROPERTIES';
+                    if (block.names.length > 1 && blockHasStyle) sectionLabel = 'SHARED PROPERTIES';
+                    else if (block.names.length > 1) sectionLabel = 'SHARED LAYOUT';
                     if (isGrave) sectionLabel = 'OFF-SCREEN ELEMENTS';
                     
                     if (sectionLabel !== currentSection) {
@@ -1641,7 +1866,7 @@
         },
 
         exportFullThemeXML: function() {
-            let fullOut = `\x3C!-- Compiled by ES Theme Studio v3.44 --\x3E\n<theme>\n    <formatVersion>4</formatVersion>\n\n`;
+            let fullOut = `\x3C!-- Compiled by ES Theme Studio v3.57 --\x3E\n<theme>\n    <formatVersion>4</formatVersion>\n\n`;
             
             if (Object.keys(this.variables).length > 0) {
                 fullOut += `    <variables>\n`;
