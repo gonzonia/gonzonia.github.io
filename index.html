@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ES Theme Studio v3.57 (Deep Compiler)</title>
+    <title>ES Theme Studio v3.61 (Deep Compiler)</title>
     <style>
         :root { --bg: #1a0b2e; --panel: #111; --border: #FF00FF; --text: #00FFFF; }
         body { margin: 0; padding: 0; background: var(--bg); color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; height: 100vh; overflow: hidden; }
@@ -79,7 +79,7 @@
 <div id="drag-tooltip"></div>
 
 <div id="sidebar">
-    <div class="header"><h2>ES Theme Studio v3.57</h2></div>
+    <div class="header"><h2>ES Theme Studio v3.61</h2></div>
     <div class="actions" style="border-bottom: 1px solid #333; border-top: none;">
         
         <div id="drop-zone" onclick="document.getElementById('file-input').click()">
@@ -134,16 +134,18 @@
     const ES_SCHEMA = {
         image:      ['pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'default', 'tile', 'color', 'esVisible', 'rotation', 'rotationOrigin'],
         video:      ['pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'default', 'delay', 'showSnapshotNoVideo', 'showSnapshotDelay', 'esVisible', 'rotation', 'rotationOrigin'],
-        text:       ['pos', 'size', 'origin', 'zIndex', 'text', 'color', 'backgroundColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing', 'esVisible', 'rotation', 'rotationOrigin'],
+        text:       ['pos', 'size', 'origin', 'zIndex', 'text', 'color', 'backgroundColor', 'selectedColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing', 'esVisible', 'rotation', 'rotationOrigin'],
         textlist:   ['pos', 'size', 'origin', 'zIndex', 'selectorColor', 'selectorImagePath', 'selectorImageTile', 'selectorHeight', 'selectorOffsetY', 'selectedColor', 'primaryColor', 'secondaryColor', 'fontPath', 'fontSize', 'alignment', 'horizontalMargin', 'forceUppercase', 'lineSpacing', 'scrollSound'],
         datetime:   ['pos', 'size', 'origin', 'zIndex', 'color', 'backgroundColor', 'fontPath', 'fontSize', 'alignment', 'forceUppercase', 'lineSpacing', 'format', 'displayRelative', 'esVisible', 'rotation', 'rotationOrigin'],
         rating:     ['pos', 'size', 'origin', 'zIndex', 'filledPath', 'unfilledPath', 'color', 'esVisible', 'rotation', 'rotationOrigin'],
-        imagegrid:  ['pos', 'size', 'origin', 'zIndex', 'margin', 'padding', 'autoLayout', 'autoLayoutSelectedZoom', 'imageSource', 'gameImage', 'folderImage', 'scrollDirection', 'centerSelection', 'scrollLoop', 'animate'],
+        imagegrid:  ['pos', 'size', 'origin', 'zIndex', 'margin', 'padding', 'autoLayout', 'autoLayoutSelectedZoom', 'imageSource', 'gameImage', 'folderImage', 'scrollDirection', 'centerSelection', 'scrollLoop', 'animate', 'scrollSound'],
         gridtile:   ['size', 'padding', 'imageColor', 'backgroundImage', 'backgroundCornerSize', 'backgroundColor', 'backgroundCenterColor', 'backgroundEdgeColor'],
-        helpsystem: ['pos', 'origin', 'textColor', 'iconColor', 'fontPath', 'fontSize'],
+        helpsystem: ['pos', 'origin', 'textColor', 'iconColor', 'fontPath', 'fontSize',
+                     'iconA', 'iconB', 'iconX', 'iconY', 'iconL', 'iconR',
+                     'iconStart', 'iconSelect', 'iconUpDown', 'iconLeftRight', 'iconUpDownLeftRight'],
         ninepatch:  ['pos', 'size', 'path', 'esVisible', 'zIndex'],
         sound:      ['path'],
-        carousel:   ['pos', 'size', 'origin', 'zIndex', 'type', 'color', 'logoSize', 'logoScale', 'logoRotation', 'logoRotationOrigin', 'logoAlignment', 'maxLogoCount'],
+        carousel:   ['pos', 'size', 'origin', 'zIndex', 'type', 'color', 'logoSize', 'logoScale', 'logoRotation', 'logoRotationOrigin', 'logoAlignment', 'maxLogoCount', 'scrollSound'],
     };
 
     // Per-view property restrictions for elements whose themable props differ by view
@@ -165,19 +167,20 @@
         'md_lbl_playcount':   'Play Count',
     };
 
-    const ARRAY_PROPS = ['pos', 'size', 'maxSize', 'origin', 'rotationOrigin', 'logoSize', 'logoRotationOrigin', 'backgroundCornerSize'];
+    const ARRAY_PROPS = ['pos', 'size', 'maxSize', 'origin', 'rotationOrigin', 'logoSize', 'logoRotationOrigin'];
     
     // Properties eligible for automatic cross-view cluster compression
+    // Used for block sorting/labeling only — actual grouping uses STYLE_PROPS_SET / POSITION_PROPS_SET
     const GROUPABLE_PROPS = [
-        // Styling props
         'color', 'fontSize', 'alignment', 'fontPath', 'lineSpacing', 'forceUppercase',
         'backgroundColor', 'textColor', 'iconColor', 'primaryColor', 'secondaryColor',
         'selectorColor', 'selectedColor', 'horizontalMargin', 'format', 'displayRelative',
         'esVisible', 'rotation', 'tile', 'scrollDirection', 'centerSelection', 'scrollLoop',
         'animate', 'imageSource', 'type', 'logoAlignment', 'logoScale', 'logoRotation',
         'maxLogoCount', 'showSnapshotNoVideo', 'showSnapshotDelay',
-        'selectorImageTile', 'autoLayoutSelectedZoom',
-        // Positional props — excluded from within-view grouping but included in cross-view grouping
+        'selectorImageTile', 'autoLayoutSelectedZoom', 'scrollSound',
+        'iconA', 'iconB', 'iconX', 'iconY', 'iconL', 'iconR',
+        'iconStart', 'iconSelect', 'iconUpDown', 'iconLeftRight', 'iconUpDownLeftRight',
         'pos', 'size', 'maxSize', 'origin', 'zIndex', 'path', 'rotationOrigin',
         'logoSize', 'logoRotationOrigin', 'delay', 'margin', 'padding',
         'filledPath', 'unfilledPath', 'selectorImagePath', 'backgroundImage',
@@ -193,6 +196,7 @@
         autoFonts: {},
         _idCounter: 0,
         systemVars: { 'system.name': '', 'system.fullName': '', 'system.theme': '' },
+        lastDragUndo: null, // { el, pos } — stores previous pos before a drag
 
         createElement: function(tag, name, extra = false, visible = false) {
             const el = {
@@ -221,6 +225,9 @@
                 'backgroundColor', 'backgroundCenterColor', 'backgroundEdgeColor',
                 'textColor', 'iconColor',
                 'type', 'logoSize', 'logoScale', 'logoRotation', 'logoAlignment', 'maxLogoCount',
+                // helpsystem icon props
+                'iconA', 'iconB', 'iconX', 'iconY', 'iconL', 'iconR',
+                'iconStart', 'iconSelect', 'iconUpDown', 'iconLeftRight', 'iconUpDownLeftRight',
             ];
 
             scalarProps.forEach(p => {
@@ -337,7 +344,27 @@
             document.getElementById('tabs-container').appendChild(sysVarBtn);
             
             this.setupDragAndDrop();
+            this.setupUndoListener();
             this.renderControls();
+        },
+
+        setupUndoListener: function() {
+            document.addEventListener('keydown', (e) => {
+                const isMac = navigator.platform.toUpperCase().includes('MAC');
+                const isUndo = (isMac ? e.metaKey : e.ctrlKey) && e.key === 'z' && !e.shiftKey;
+                if (!isUndo) return;
+                // Only intercept if focus is not in a text input
+                const tag = document.activeElement.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+                if (!this.lastDragUndo) return;
+                e.preventDefault();
+                const { el, pos } = this.lastDragUndo;
+                el.pos = pos;
+                this.lastDragUndo = null;
+                this.renderMonitor();
+                this.renderControls();
+                this.scrollToControl(el.id);
+            });
         },
 
         setupDragAndDrop: function() {
@@ -1316,6 +1343,9 @@
                 const offsetX = cursorFracX - posX;
                 const offsetY = cursorFracY - posY;
 
+                // Store previous pos for undo
+                this.lastDragUndo = { el, pos: [...el.pos] };
+
                 cont._wasDragged = false;
                 cont.classList.add('dragging');
                 cont.style.zIndex = 9998;
@@ -1379,6 +1409,9 @@
                         this.renderMonitor();
                         this.renderControls();
                         this.scrollToControl(el.id);
+                    } else {
+                        // No movement — clear undo state
+                        this.lastDragUndo = null;
                     }
                 };
 
@@ -1501,6 +1534,8 @@
                                 } else if (ARRAY_PROPS.includes(prop)) {
                                     const vals = node.textContent.trim().split(/\s+/);
                                     targetEl[prop] = [vals[0] || '0', vals[1] || '0'];
+                                    if (!targetEl._explicitProps) targetEl._explicitProps = new Set();
+                                    targetEl._explicitProps.add(prop);
                                 } else {
                                     targetEl[prop] = node.textContent.trim();
                                     if (prop === 'text' && MD_LBL_DEFAULTS[targetEl.name] !== undefined) {
@@ -1518,7 +1553,28 @@
 
                     viewTargets.forEach(viewTarget => {
                         if (!this.views.includes(viewTarget)) return;
-                        Array.from(viewNode.children).forEach(child => processChild(child, viewTarget));
+                        Array.from(viewNode.children).forEach(child => {
+                            // Handle boardModels/serialNos targeted helpsystem overrides
+                            if (child.tagName === 'helpsystem' && child.getAttribute('boardModels')) {
+                                const targetEl = this.data[viewTarget].find(e => e.name === child.getAttribute('name') && e.tag === 'helpsystem');
+                                if (targetEl) {
+                                    if (!targetEl.boardOverrides) targetEl.boardOverrides = [];
+                                    // Store as raw attribute map + prop map
+                                    const override = {
+                                        boardModels: child.getAttribute('boardModels'),
+                                        serialNos: child.getAttribute('serialNos') || null,
+                                        props: {}
+                                    };
+                                    ES_SCHEMA['helpsystem'].forEach(prop => {
+                                        const node = child.querySelector(prop);
+                                        if (node) override.props[prop] = node.textContent.trim();
+                                    });
+                                    targetEl.boardOverrides.push(override);
+                                }
+                                return; // Don't process as regular element
+                            }
+                            processChild(child, viewTarget);
+                        });
                     });
                 });
                 
@@ -1576,7 +1632,8 @@
                             } else if (ARRAY_PROPS.includes(prop)) {
                                 const v0 = parseFloat(el[prop][0]);
                                 const v1 = parseFloat(el[prop][1]);
-                                if (prop === 'pos' || v0 !== 0 || v1 !== 0) {
+                                // Export pos always; export size/maxSize/origin when non-zero OR explicitly marked
+                                if (prop === 'pos' || v0 !== 0 || v1 !== 0 || el._explicitProps && el._explicitProps.has(prop)) {
                                     props[prop] = `${el[prop][0]} ${el[prop][1]}`;
                                 }
                             } else {
@@ -1607,27 +1664,86 @@
                 OutputBlocks[viewStr].push({ tag, names, props, extra });
             };
 
-            // 2a. Cross-view compression — runs FIRST so shared blocks across views
-            //     are identified before within-view grouping consumes the data.
+            // 2a. Cross-view / cross-element compression
+            //
+            // Strategy:
+            //   Step 1 — Find groups of elements (same tag, same views) sharing identical
+            //             ALL-props fingerprint. Emit as a single block, delete from ExportData.
+            //   Step 2 — For elements sharing style-only props across names/views, emit a
+            //             style-only block, delete those props from ExportData.
+            //   Step 3 — For the SAME element name appearing in multiple views with identical
+            //             remaining props, emit a cross-view block.
+            //   Anything left after these passes goes to individual blocks in 2b/3.
+
+            // Build a full-props fingerprint for each element in each view
+            // Step 1: Full match — same tag, all props identical, multiple names or views
+            const FullMap = {};
+            viewsToCompile.forEach(v => {
+                for (const name in ExportData[v]) {
+                    const el = ExportData[v][name];
+                    if (!Object.keys(el.props).length) continue;
+                    const json = JSON.stringify(el.props);
+                    if (!FullMap[el.tag]) FullMap[el.tag] = {};
+                    if (!FullMap[el.tag][json]) FullMap[el.tag][json] = {};
+                    if (!FullMap[el.tag][json][name]) FullMap[el.tag][json][name] = new Set();
+                    FullMap[el.tag][json][name].add(v);
+                }
+            });
+
+            for (const tag in FullMap) {
+                for (const json in FullMap[tag]) {
+                    // Group names by which views they appear in with this fingerprint
+                    const viewComboMap = {};
+                    for (const name in FullMap[tag][json]) {
+                        const views = Array.from(FullMap[tag][json][name]).sort();
+                        const viewStr = views.join(', ');
+                        if (!viewComboMap[viewStr]) viewComboMap[viewStr] = [];
+                        viewComboMap[viewStr].push(name);
+                    }
+                    for (const viewStr in viewComboMap) {
+                        const names = viewComboMap[viewStr].sort();
+                        const views = viewStr.split(', ');
+                        if (names.length > 1 || views.length > 1) {
+                            const props = JSON.parse(json);
+                            const isExtra = names.some(n => views.some(v => ExportData[v][n] && ExportData[v][n].extra));
+                            addBlock(viewStr, tag, names, props, isExtra);
+                            views.forEach(v => names.forEach(n => {
+                                if (ExportData[v][n]) ExportData[v][n].props = {};
+                            }));
+                        }
+                    }
+                }
+            }
+
+            // Step 2: Style-only match — group elements sharing non-positional props
+            const STYLE_PROPS_SET = new Set([
+                'color', 'fontSize', 'alignment', 'fontPath', 'lineSpacing', 'forceUppercase',
+                'backgroundColor', 'textColor', 'iconColor', 'primaryColor', 'secondaryColor',
+                'selectorColor', 'selectedColor', 'horizontalMargin', 'format', 'displayRelative',
+                'esVisible', 'rotation', 'tile', 'scrollDirection', 'centerSelection', 'scrollLoop',
+                'animate', 'imageSource', 'type', 'logoAlignment', 'logoScale', 'logoRotation',
+                'maxLogoCount', 'showSnapshotNoVideo', 'showSnapshotDelay', 'selectorImageTile',
+                'autoLayoutSelectedZoom', 'scrollSound',
+                'iconA', 'iconB', 'iconX', 'iconY', 'iconL', 'iconR',
+                'iconStart', 'iconSelect', 'iconUpDown', 'iconLeftRight', 'iconUpDownLeftRight',
+            ]);
+
             const StyleMap = {};
             viewsToCompile.forEach(v => {
                 for (const name in ExportData[v]) {
                     const el = ExportData[v][name];
+                    if (!Object.keys(el.props).length) continue;
                     let gProps = {};
                     let hasGProps = false;
-                    GROUPABLE_PROPS.forEach(gp => {
-                        if (el.props[gp] !== undefined) {
-                            gProps[gp] = el.props[gp];
-                            hasGProps = true;
-                        }
+                    STYLE_PROPS_SET.forEach(gp => {
+                        if (el.props[gp] !== undefined) { gProps[gp] = el.props[gp]; hasGProps = true; }
                     });
-                    if (hasGProps) {
-                        const json = JSON.stringify(gProps);
-                        if (!StyleMap[el.tag]) StyleMap[el.tag] = {};
-                        if (!StyleMap[el.tag][json]) StyleMap[el.tag][json] = {};
-                        if (!StyleMap[el.tag][json][name]) StyleMap[el.tag][json][name] = new Set();
-                        StyleMap[el.tag][json][name].add(v);
-                    }
+                    if (!hasGProps) continue;
+                    const json = JSON.stringify(gProps);
+                    if (!StyleMap[el.tag]) StyleMap[el.tag] = {};
+                    if (!StyleMap[el.tag][json]) StyleMap[el.tag][json] = {};
+                    if (!StyleMap[el.tag][json][name]) StyleMap[el.tag][json][name] = new Set();
+                    StyleMap[el.tag][json][name].add(v);
                 }
             });
 
@@ -1643,20 +1759,45 @@
                     for (const viewStr in viewComboMap) {
                         const names = viewComboMap[viewStr].sort();
                         const views = viewStr.split(', ');
-                        // Extract if multiple elements OR multiple views share this exact property signature
                         if (names.length > 1 || views.length > 1) {
                             const props = JSON.parse(json);
-                            // Preserve extra flag — check any view that has this element
                             const isExtra = names.some(n => views.some(v => ExportData[v][n] && ExportData[v][n].extra));
                             addBlock(viewStr, tag, names, props, isExtra);
+                            views.forEach(v => names.forEach(n => {
+                                if (ExportData[v][n]) {
+                                    for (const p in props) delete ExportData[v][n].props[p];
+                                }
+                            }));
+                        }
+                    }
+                }
+            }
+
+            // Step 3: Same-element cross-view — same name, same remaining props, multiple views
+            const PosMap = {};
+            viewsToCompile.forEach(v => {
+                for (const name in ExportData[v]) {
+                    const el = ExportData[v][name];
+                    if (!Object.keys(el.props).length) continue;
+                    const json = JSON.stringify(el.props);
+                    if (!PosMap[el.tag]) PosMap[el.tag] = {};
+                    if (!PosMap[el.tag][json]) PosMap[el.tag][json] = {};
+                    if (!PosMap[el.tag][json][name]) PosMap[el.tag][json][name] = new Set();
+                    PosMap[el.tag][json][name].add(v);
+                }
+            });
+
+            for (const tag in PosMap) {
+                for (const json in PosMap[tag]) {
+                    for (const name in PosMap[tag][json]) {
+                        const views = Array.from(PosMap[tag][json][name]).sort();
+                        if (views.length > 1) {
+                            const viewStr = views.join(', ');
+                            const props = JSON.parse(json);
+                            const isExtra = views.some(v => ExportData[v][name] && ExportData[v][name].extra);
+                            addBlock(viewStr, tag, [name], props, isExtra);
                             views.forEach(v => {
-                                names.forEach(n => {
-                                    if (ExportData[v][n]) {
-                                        for (const p in props) {
-                                            delete ExportData[v][n].props[p];
-                                        }
-                                    }
-                                });
+                                if (ExportData[v][name]) ExportData[v][name].props = {};
                             });
                         }
                     }
@@ -1667,7 +1808,7 @@
             //     properties that weren't already covered by a cross-view block.
             //     Positional props are excluded from within-view grouping.
             const POSITIONAL_PROPS = new Set(['pos', 'size', 'maxSize', 'origin', 'zIndex',
-                'rotationOrigin', 'logoSize', 'logoRotationOrigin']);
+                'rotationOrigin', 'logoSize', 'logoRotationOrigin', 'padding', 'margin']);
 
             viewsToCompile.forEach(v => {
                 const byTag = {};
@@ -1848,6 +1989,22 @@
                         out += `            <${prop}>${block.props[prop]}</${prop}>\n`;
                     }
                     out += `        </${block.tag}>\n\n`;
+
+                    // Emit boardModels/serialNos override blocks for helpsystem
+                    if (block.tag === 'helpsystem' && block.names.length === 1) {
+                        const views = viewStr.split(', ');
+                        const hEl = this.data[views[0]] && this.data[views[0]].find(e => e.name === block.names[0] && e.tag === 'helpsystem');
+                        if (hEl && hEl.boardOverrides && hEl.boardOverrides.length > 0) {
+                            hEl.boardOverrides.forEach(ov => {
+                                const serialAttr = ov.serialNos ? ` serialNos="${ov.serialNos}"` : '';
+                                out += `        <helpsystem name="${block.names[0]}" boardModels="${ov.boardModels}"${serialAttr}>\n`;
+                                for (const prop in ov.props) {
+                                    out += `            <${prop}>${ov.props[prop]}</${prop}>\n`;
+                                }
+                                out += `        </helpsystem>\n\n`;
+                            });
+                        }
+                    }
                 });
 
                 out += `    </view>\n\n`;
@@ -1866,7 +2023,7 @@
         },
 
         exportFullThemeXML: function() {
-            let fullOut = `\x3C!-- Compiled by ES Theme Studio v3.57 --\x3E\n<theme>\n    <formatVersion>4</formatVersion>\n\n`;
+            let fullOut = `\x3C!-- Compiled by ES Theme Studio v3.61 --\x3E\n<theme>\n    <formatVersion>4</formatVersion>\n\n`;
             
             if (Object.keys(this.variables).length > 0) {
                 fullOut += `    <variables>\n`;
